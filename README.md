@@ -52,3 +52,22 @@ Le backend est intégré à Next.js (`src/app/api`), avec Prisma et SQLite.
 ## Hygiène Git
 
 Le projet contient actuellement des dépendances et fichiers `.next` déjà suivis par Git. Le fichier `.gitignore` empêche d'en ajouter de nouveaux. Avant le premier commit de déploiement, il faudra retirer ces fichiers de l'index Git sans les supprimer du disque, puis valider un commit propre.
+
+## Déploiement sur Vercel
+
+La base reste SQLite : en ligne, elle est hébergée chez [Turso](https://turso.tech).
+
+Variables à définir dans Vercel (Settings → Environment Variables) :
+
+| Variable | Valeur |
+|---|---|
+| `TURSO_DATABASE_URL` | `libsql://….turso.io` |
+| `TURSO_AUTH_TOKEN` | jeton créé dans Turso |
+| `AGENT_PHONE` / `AGENT_PASSWORD` | compte agent (créé ou mis à jour à chaque déploiement) |
+| `PAYMENT_PROVIDER` | `simulation` |
+
+Le store Vercel Blob (privé) relié au projet ajoute `BLOB_STORE_ID` pour les vocaux.
+
+À chaque déploiement, `vercel-build` applique les migrations sur Turso (`prisma/turso-migrate.mjs`),
+crée le compte agent, puis construit l'appli. Pour appliquer les migrations à la main :
+`npm run db:turso` avec `TURSO_DATABASE_URL` et `TURSO_AUTH_TOKEN` dans `.env`.

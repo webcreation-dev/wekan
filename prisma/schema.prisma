@@ -1,8 +1,11 @@
-// Base de données Wekan (SQLite en développement).
-// Pour PostgreSQL : provider = "postgresql" et DATABASE_URL vers la base.
+// Base de données Wekan : SQLite.
+// - En local : fichier prisma/dev.db (DATABASE_URL).
+// - En ligne : SQLite hébergé chez Turso (TURSO_DATABASE_URL + TURSO_AUTH_TOKEN),
+//   via l'adaptateur libSQL (voir src/lib/server/db.ts).
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
 }
 
 datasource db {

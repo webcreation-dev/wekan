@@ -2,15 +2,16 @@
 
 /**
  * ─── RequestFlowScreen ──────────────────────────────────────────────────────
- * Parcours de demande en 3 étapes :
+ * Parcours de demande : une vue d'introduction (feuille de route), puis 3 étapes :
  *   1. Lieu      : position actuelle (GPS) ou lieu enregistré, ou « plus tard »
  *   2. Le souci  : message vocal + texte facultatif
  *   3. Envoyée   : un agent va appeler le client pour fixer date et prix
  */
 
 import { useEffect, useRef, useState } from 'react'
+import { motion } from 'framer-motion'
 import {
-  Bookmark, Check, ChevronLeft, Loader2, MapPin, Mic, Phone, Trash2,
+  ArrowRight, Bookmark, Check, ChevronLeft, Loader2, MapPin, Mic, Phone, Trash2,
 } from 'lucide-react'
 import { RequestLocation, ServiceRequest } from '@/types'
 import { getRequestService } from '@/data/trades'
@@ -29,7 +30,7 @@ interface RequestFlowScreenProps {
   onHome: () => void
 }
 
-type Step = 'location' | 'problem' | 'done'
+type Step = 'intro' | 'location' | 'problem' | 'done'
 
 // ── En-tête + progression ─────────────────────────────────────────────────────
 function FlowHeader({ title, step, onBack }: { title: string; step: 1 | 2; onBack: () => void }) {
@@ -78,6 +79,73 @@ function ServiceChip({ name, image }: { name: string; image: string }) {
         <p className="text-[11px] text-[var(--text-muted)]">Service demandé</p>
         <p className="truncate text-[15px] font-bold text-[var(--text-primary)]">{name}</p>
       </div>
+    </div>
+  )
+}
+
+// ── Introduction : feuille de route du parcours ───────────────────────────────
+const ROADMAP = [
+  { Icon: MapPin, color: '#2d7ff9', title: 'Indiquez le lieu', text: 'Vous êtes sur place ? Un clic et on a votre position.' },
+  { Icon: Mic,    color: '#f59e0b', title: 'Expliquez votre problème', text: 'Un message vocal ou quelques mots suffisent.' },
+  { Icon: Phone,  color: '#10b981', title: 'On vous appelle', text: 'En moins d’1 h, pour fixer la date et le prix.' },
+]
+
+function IntroStep({ serviceName, serviceImage, onBack, onStart }: {
+  serviceName: string
+  serviceImage: string
+  onBack: () => void
+  onStart: () => void
+}) {
+  return (
+    <div className="flex h-full flex-col bg-[var(--bg-primary)]">
+      <div className="flex-shrink-0 px-4 pt-4">
+        <button onClick={onBack} aria-label="Retour" className="-ml-1 flex h-10 w-10 items-center justify-center rounded-full active:bg-[var(--bg-surface)]">
+          <ChevronLeft size={24} strokeWidth={2.2} className="text-[var(--text-primary)]" />
+        </button>
+      </div>
+
+      <div className="screen-scroll flex-1 overflow-y-auto px-6 pb-6">
+        {/* Service choisi */}
+        <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: 'spring', stiffness: 260, damping: 18 }}
+          className="mx-auto mt-2 h-20 w-20 overflow-hidden rounded-[24px] shadow-[0_10px_24px_rgba(15,23,42,0.15)] ring-4 ring-white dark:ring-white/10">
+          <img src={serviceImage} alt="" className="h-full w-full object-cover" />
+        </motion.div>
+        <h1 className="mt-5 text-center text-[24px] font-bold leading-tight tracking-[-0.03em] text-[var(--text-primary)]">
+          Votre {serviceName.toLowerCase()} en 3 étapes
+        </h1>
+        <p className="mt-1.5 text-center text-[14px] text-[var(--text-secondary)]">Simple et rapide, ça prend moins de 2 minutes.</p>
+
+        {/* Feuille de route en pointillés */}
+        <div className="mt-8">
+          {ROADMAP.map(({ Icon, color, title, text }, i) => (
+            <motion.div
+              key={title}
+              initial={{ opacity: 0, x: -16 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.15 + i * 0.15 }}
+              className="flex gap-4"
+            >
+              <div className="flex flex-col items-center">
+                <span className="relative flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-full text-white shadow-[0_8px_18px_rgba(15,23,42,0.15)]" style={{ backgroundColor: color }}>
+                  <Icon size={24} strokeWidth={2.2} />
+                  <span className="absolute -right-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full bg-[var(--bg-card)] text-[12px] font-bold shadow" style={{ color }}>
+                    {i + 1}
+                  </span>
+                </span>
+                {i < ROADMAP.length - 1 && <span className="my-1.5 min-h-[34px] flex-1 border-l-[3px] border-dotted border-[#c7d2e0] dark:border-white/20" />}
+              </div>
+              <div className={`pt-2.5 ${i < ROADMAP.length - 1 ? 'pb-6' : ''}`}>
+                <p className="text-[16px] font-bold text-[var(--text-primary)]">{title}</p>
+                <p className="mt-0.5 text-[13px] leading-snug text-[var(--text-secondary)]">{text}</p>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      </div>
+
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }} className="flex-shrink-0 px-4 pb-6">
+        <PrimaryButton onClick={onStart}>Je commence <ArrowRight size={20} /></PrimaryButton>
+      </motion.div>
     </div>
   )
 }
@@ -384,7 +452,7 @@ function DoneStep({ request, onSeeRequests, onHome }: { request: ServiceRequest;
 export default function RequestFlowScreen({ serviceId, onBack, onSeeRequests, onHome }: RequestFlowScreenProps) {
   const service = getRequestService(serviceId)
   const createRequest = useRequestsStore(state => state.createRequest)
-  const [step, setStep] = useState<Step>('location')
+  const [step, setStep] = useState<Step>('intro')
   const [location, setLocation] = useState<RequestLocation | null>(null)
   const [created, setCreated] = useState<ServiceRequest | null>(null)
 
@@ -407,11 +475,15 @@ export default function RequestFlowScreen({ serviceId, onBack, onSeeRequests, on
     )
   }
 
+  if (step === 'intro') {
+    return <IntroStep serviceName={service.name} serviceImage={service.image} onBack={onBack} onStart={() => setStep('location')} />
+  }
+
   return (
     <LocationStep
       serviceName={service.name}
       serviceImage={service.image}
-      onBack={onBack}
+      onBack={() => setStep('intro')}
       onNext={loc => { setLocation(loc); setStep('problem') }}
     />
   )
