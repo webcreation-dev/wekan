@@ -16,6 +16,7 @@ export const GET = handler(async (_req: Request, { params }: { params: { id: str
   if (!voice || !allowed || !voice.fileName) throw new ApiError(404, 'Vocal introuvable.')
 
   const data = await readVoiceFile(voice.fileName)
+  if (!data) throw new ApiError(404, 'Vocal introuvable.')
   return new Response(new Uint8Array(data), {
     headers: { 'Content-Type': voice.mimeType, 'Content-Length': String(data.length), 'Cache-Control': 'private, max-age=86400' },
   })

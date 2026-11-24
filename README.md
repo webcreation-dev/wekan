@@ -20,7 +20,7 @@ Le backend est intégré à Next.js (`src/app/api`), avec Prisma et SQLite.
 
 - **Comptes** : inscription et connexion par numéro + mot de passe (haché avec scrypt), session par cookie httpOnly.
 - **Demandes** : une demande = une conversation. Les vocaux et messages saisis à la création deviennent les premiers messages.
-- **Vocaux** : envoyés via `POST /api/voices`, stockés dans `storage/voices`, lisibles uniquement par leur auteur, le client de la demande et les agents.
+- **Vocaux** : envoyés via `POST /api/voices`, stockés dans Vercel Blob (store privé) si `BLOB_STORE_ID` ou `BLOB_READ_WRITE_TOKEN` est défini, sinon dans `storage/voices`, lisibles uniquement par leur auteur, le client de la demande et les agents.
 - **Lieux enregistrés** : par utilisateur.
 
 ### Routes
@@ -45,7 +45,7 @@ Le backend est intégré à Next.js (`src/app/api`), avec Prisma et SQLite.
 ## Avant la production
 
 - Passer à PostgreSQL : `provider = "postgresql"` dans `prisma/schema.prisma` et `DATABASE_URL` vers la base, puis `npm run db:deploy`.
-- Sur un hébergement serverless (Vercel…), stocker les vocaux dans un stockage objet (S3, R2, Vercel Blob) : seul `src/lib/server/storage.ts` change.
+- Sur Vercel, créer un store Blob **privé** (Storage → Blob) et le relier au projet : `BLOB_STORE_ID` est alors ajouté automatiquement et les vocaux y sont stockés.
 - Brancher l'interface `/admin` sur les routes agent (elle utilise encore des données de démonstration).
 - Prestataire de paiement réel : implémenter `initiate` et `check` dans `src/lib/server/payment-provider.ts` (FedaPay, Kkiapay, MTN MoMo…) et définir `PAYMENT_PROVIDER`. En mode `simulation`, aucun argent ne bouge.
 

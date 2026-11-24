@@ -4,7 +4,8 @@ import { requireUser } from '@/lib/server/auth'
 import { ApiError, handler } from '@/lib/server/http'
 import { saveVoiceFile } from '@/lib/server/storage'
 
-const MAX_BYTES = 10 * 1024 * 1024 // 10 Mo
+// 4 Mo : limite de corps des fonctions Vercel (4,5 Mo). Une minute de vocal ≈ 0,2 Mo.
+const MAX_BYTES = 4 * 1024 * 1024
 const EXTENSIONS: Record<string, string> = { 'audio/webm': 'webm', 'audio/ogg': 'ogg', 'audio/mp4': 'm4a', 'audio/mpeg': 'mp3', 'audio/wav': 'wav' }
 
 /** Envoi d'un vocal (multipart : audio, durationSec, waveform). Renvoie son id. */
@@ -13,7 +14,7 @@ export const POST = handler(async (req: Request) => {
   const form = await req.formData().catch(() => null)
   const file = form?.get('audio')
   if (!(file instanceof Blob) || file.size === 0) throw new ApiError(400, 'Fichier audio manquant.')
-  if (file.size > MAX_BYTES) throw new ApiError(413, 'Vocal trop long (10 Mo maximum).')
+  if (file.size > MAX_BYTES) throw new ApiError(413, 'Vocal trop long (4 Mo maximum).')
 
   const mimeType = (file.type || 'audio/webm').split(';')[0]
   const ext = EXTENSIONS[mimeType]
@@ -30,7 +31,7 @@ export const POST = handler(async (req: Request) => {
     data: { userId: user.id, fileName: '', mimeType, durationSec, waveform: JSON.stringify(waveform) },
   })
   const fileName = `${voice.id}.${ext}`
-  await saveVoiceFile(fileName, Buffer.from(await file.arrayBuffer()))
+  await saveVoiceFile(fileName, Buffer.from(await file.arrayBuffer()), mimeType)
   await db.voice.update({ where: { id: voice.id }, data: { fileName } })
 
   return NextResponse.json({ voice: { id: voice.id, url: `/api/voices/${voice.id}`, durationSec, waveform } }, { status: 201 })
