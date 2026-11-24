@@ -1,145 +1,192 @@
 'use client'
 
 import { useState } from 'react'
-import { Calendar, ChevronRight, Clock, MapPin, CheckCircle, XCircle, AlertCircle } from 'lucide-react'
-import { Screen, AppointmentStatus } from '@/types'
-import { useAppointments } from '@/hooks/useAppointments'
+import { Calendar, CheckCircle, ChevronRight, ClipboardList, MapPin, Mic, Phone, UserRound, Wallet, XCircle } from 'lucide-react'
+import { RequestStatus, Screen, ServiceRequest } from '@/types'
+import { useRequestsStore } from '@/store/requestsStore'
 import TabBar from '@/components/ui/TabBar'
+import AppHeader from '@/components/ui/AppHeader'
 
 interface RdvScreenProps {
   onNavigate: (screen: Screen) => void
-  onViewTracking: (appt: { date: string; time: string }) => void
+  onViewTracking: (appt: { requestId: string; date: string; time: string }) => void
   onViewInvoice: () => void
+  /** Ouvre la conversation de la demande (pour compléter les informations) */
+  onOpenChat: (requestId: string) => void
 }
 
-const STATUS_CONFIG: Record<AppointmentStatus, { label: string; Icon: typeof CheckCircle; color: string; bg: string }> = {
-  confirmed: { label: 'Confirmé',    Icon: CheckCircle, color: 'text-[#2d7ff9]',  bg: 'bg-[#2d7ff9]/10' },
-  pending:   { label: 'En attente',  Icon: AlertCircle, color: 'text-yellow-500', bg: 'bg-yellow-500/10' },
-  completed: { label: 'Terminé',     Icon: CheckCircle, color: 'text-green-500',  bg: 'bg-green-500/10' },
-  cancelled: { label: 'Annulé',      Icon: XCircle,     color: 'text-red-400',    bg: 'bg-red-400/10' },
+const STATUS_CONFIG: Record<RequestStatus, { label: string; Icon: typeof CheckCircle; className: string }> = {
+  awaiting_call: { label: 'En attente', Icon: Phone,       className: 'bg-amber-500/10 text-amber-600' },
+  scheduled:     { label: 'Planifiée',          Icon: Calendar,    className: 'bg-[#2d7ff9]/10 text-[#2d7ff9]' },
+  completed:     { label: 'Terminée',           Icon: CheckCircle, className: 'bg-emerald-500/10 text-emerald-600' },
+  cancelled:     { label: 'Annulée',            Icon: XCircle,     className: 'bg-red-500/10 text-red-500' },
 }
 
-function isTrackingAvailable(date: string, time: string): { available: boolean; label: string } {
-  const now = new Date()
-  const todayStr = now.toLocaleDateString('fr-FR')
-  const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-  const isToday = date === "Aujourd'hui" || date === todayStr || date === 'today' || date === todayIso
+type Tab = 'ongoing' | 'past'
 
-  if (!isToday) return { available: false, label: 'Suivi disponible le jour J' }
-
-  const [h, m] = time.split(':').map(Number)
-  const apptMins = h * 60 + m
-  const nowMins  = now.getHours() * 60 + now.getMinutes()
-  const diff = apptMins - nowMins
-
-  if (diff > 30) {
-    const rem = Math.ceil(diff - 30)
-    return { available: false, label: `Suivi dans ${rem} min` }
-  }
-  return { available: true, label: 'Suivi en direct' }
+function InfoCell({ icon: Icon, label, value }: { icon: typeof Calendar; label: string; value?: string }) {
+  return (
+    <div className="flex-1 rounded-xl bg-[var(--bg-primary)] px-3 py-2.5">
+      <p className="flex items-center gap-1 text-[11px] text-[var(--text-muted)]"><Icon size={12} /> {label}</p>
+      <p className={`mt-0.5 text-[13px] font-bold ${value ? 'text-[var(--text-primary)]' : 'italic text-[var(--text-muted)]'}`}>
+        {value ?? 'À définir'}
+      </p>
+    </div>
+  )
 }
 
-type Tab = 'upcoming' | 'past'
-
-export default function RdvScreen({ onNavigate, onViewTracking, onViewInvoice }: RdvScreenProps) {
-  const { appointments, loading } = useAppointments()
-  const [tab, setTab] = useState<Tab>('upcoming')
-  const upcoming = appointments.filter(a => a.status === 'confirmed' || a.status === 'pending')
-  const past      = appointments.filter(a => a.status === 'completed' || a.status === 'cancelled')
-  const displayed = tab === 'upcoming' ? upcoming : past
+function RequestCard({ request, onViewTracking, onViewInvoice, onComplete }: {
+  request: ServiceRequest
+  onViewTracking: RdvScreenProps['onViewTracking']
+  onViewInvoice: () => void
+  onComplete: () => void
+}) {
+  const cfg = STATUS_CONFIG[request.status]
+  const StatusIcon = cfg.Icon
+  const when = request.date ? `${request.date}${request.time ? ` à ${request.time}` : ''}` : undefined
+  const price = request.price != null ? `${request.price.toLocaleString('fr-FR')} FCFA` : undefined
+  // Tant que l'agent n'a pas appelé, la carte reste minimale (pas de vocal, lieu, date ni prix)
+  const awaitingCall = request.status === 'awaiting_call'
+  // Vocaux envoyés par le client (étape 2 + conversation)
+  const voices = request.messages.filter(m => m.sender === 'user' && m.voiceNote)
+  const firstVoice = voices[0]?.voiceNote
 
   return (
-    <div className="flex flex-col h-full bg-[var(--bg-primary)]">
-      <div className="px-4 pt-5 pb-4 border-b border-[var(--border)]">
-        <h1 className="text-[22px] font-bold text-[var(--text-primary)]">Mes Rendez-vous</h1>
-        <p className="text-[13px] text-[var(--text-secondary)] mt-0.5">{upcoming.length} rendez-vous à venir</p>
-      </div>
-
-      <div className="flex px-4 pt-3 gap-5 border-b border-[var(--border)]">
-        {([['upcoming', 'À venir'], ['past', 'Passés']] as [Tab, string][]).map(([key, label]) => (
-          <button key={key} onClick={() => setTab(key)}
-            className={`pb-2.5 text-[14px] font-semibold border-b-2 transition-all ${tab === key ? 'border-[#2d7ff9] text-[#2d7ff9]' : 'border-transparent text-[var(--text-muted)]'}`}>
-            {label}
-            <span className={`ml-1.5 text-[11px] px-1.5 py-0.5 rounded-full ${tab === key ? 'bg-[#2d7ff9]/15 text-[#2d7ff9]' : 'bg-[var(--bg-card)] text-[var(--text-muted)]'}`}>
-              {key === 'upcoming' ? upcoming.length : past.length}
+    <div className="rounded-2xl bg-[var(--bg-card)] p-4 shadow-[0_2px_12px_rgba(15,23,42,0.05)]">
+      <div className="flex items-start gap-3">
+        <img src={request.serviceImage} alt="" className="h-12 w-12 flex-shrink-0 rounded-xl object-cover" />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <p className="truncate text-[15px] font-bold text-[var(--text-primary)]">{request.serviceName}</p>
+            <span className={`flex flex-shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ${cfg.className}`}>
+              <StatusIcon size={12} /> {cfg.label}
             </span>
-          </button>
-        ))}
-      </div>
-
-      <div className="flex-1 overflow-y-auto screen-scroll px-4 pt-3 pb-4 space-y-3">
-        {loading ? (
-          Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="h-[160px] rounded-2xl bg-[var(--bg-card)] border border-[var(--border)] animate-pulse" />
-          ))
-        ) : displayed.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 gap-3">
-            <Calendar size={40} className="text-[var(--text-muted)]" />
-            <p className="text-[var(--text-muted)] text-[14px]">
-              Aucun rendez-vous {tab === 'upcoming' ? 'à venir' : 'passé'}
-            </p>
           </div>
-        ) : displayed.map(appt => {
-          const cfg = STATUS_CONFIG[appt.status]
-          const StatusIcon = cfg.Icon
-          const tracking = isTrackingAvailable(appt.date, appt.time)
-
-          return (
-            <div key={appt.id} className="p-4 rounded-2xl bg-[var(--bg-card)] border border-[var(--border)]">
-              {/* Provider row */}
-              <div className="flex items-start justify-between mb-2.5">
-                <div className="flex items-center gap-2.5">
-                  <img src={appt.providerAvatar} alt={appt.providerName} className="w-10 h-10 rounded-full object-cover" />
-                  <div>
-                    <p className="text-[14px] font-bold text-[var(--text-primary)]">{appt.providerName}</p>
-                    <p className="text-[11px] text-[var(--text-secondary)]">{appt.providerRole}</p>
-                  </div>
-                </div>
-                <div className={`flex items-center gap-1 px-2.5 py-1 rounded-lg ${cfg.bg}`}>
-                  <StatusIcon size={12} className={cfg.color} />
-                  <span className={`text-[11px] font-bold ${cfg.color}`}>{cfg.label}</span>
-                </div>
-              </div>
-
-              <p className="text-[14px] font-semibold text-[var(--text-primary)] mb-2">{appt.service}</p>
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <Clock size={12} className="text-[var(--text-muted)]" />
-                  <span className="text-[12px] text-[var(--text-secondary)]">{appt.date} à {appt.time}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <MapPin size={12} className="text-[var(--text-muted)]" />
-                  <span className="text-[12px] text-[var(--text-secondary)] truncate">{appt.address}</span>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between mt-3 pt-3 border-t border-[var(--border)]">
-                <span className="text-[14px] font-bold text-[#2d7ff9]">{appt.price}</span>
-                <div className="flex gap-2">
-                  {appt.status === 'confirmed' && (
-                    <button
-                      onClick={() => onViewTracking({ date: appt.date, time: appt.time })}
-                      className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-[12px] font-semibold transition-all ${
-                        tracking.available
-                          ? 'bg-[#2d7ff9] text-white'
-                          : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border border-[var(--border)]'
-                      }`}
-                    >
-                      {tracking.label} <ChevronRight size={13} />
-                    </button>
-                  )}
-                  {appt.status === 'completed' && (
-                    <button onClick={onViewInvoice}
-                      className="flex items-center gap-1 text-[12px] font-semibold text-[var(--text-muted)]">
-                      Facture <ChevronRight size={13} />
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          )
-        })}
+          <p className="mt-0.5 text-[12px] text-[var(--text-muted)]">#{request.ref} · {request.createdAt}</p>
+        </div>
       </div>
+
+      {/* Le souci */}
+      {(request.description || firstVoice) && (
+        <div className="mt-3 space-y-1.5">
+          {firstVoice && (
+            <p className="flex items-center gap-1.5 text-[12px] font-medium text-[#2d7ff9]">
+              <Mic size={13} />
+              {voices.length > 1
+                ? `${voices.length} messages vocaux`
+                : `Message vocal · ${Math.floor(firstVoice.durationSec / 60)}:${String(firstVoice.durationSec % 60).padStart(2, '0')}`}
+            </p>
+          )}
+          {request.description && <p className="line-clamp-2 text-[13px] text-[var(--text-secondary)]">{request.description}</p>}
+        </div>
+      )}
+
+      {!awaitingCall && (
+        <>
+          <p className="mt-2 flex items-center gap-1.5 text-[12px] text-[var(--text-secondary)]">
+            <MapPin size={13} className="text-[var(--text-muted)]" /> {request.location?.label ?? 'Lieu à préciser'}
+          </p>
+
+          {/* Date et prix : renseignés par l'agent après l'appel */}
+          <div className="mt-3 flex gap-2">
+            <InfoCell icon={Calendar} label="Rendez-vous" value={when} />
+            <InfoCell icon={Wallet} label="Prix" value={price} />
+          </div>
+        </>
+      )}
+
+      {request.status === 'awaiting_call' && (
+        <p className="mt-3 flex items-center gap-2 rounded-xl bg-amber-500/10 px-3 py-2.5 text-[12px] font-medium text-amber-700 dark:text-amber-400">
+          <Phone size={14} className="flex-shrink-0" />
+          Un agent va vous appeler pour fixer la date et le prix.
+        </p>
+      )}
+
+      {awaitingCall && (
+        <div className="mt-3 flex items-center justify-between border-t border-[var(--border)] pt-3">
+          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#e9edf3] text-[var(--text-muted)] dark:bg-white/10">
+            <UserRound size={16} />
+          </span>
+          <button onClick={onComplete} className="flex items-center gap-1 rounded-xl bg-[#2d7ff9] px-3 py-1.5 text-[12px] font-semibold text-white">
+            Compléter des informations <ChevronRight size={13} />
+          </button>
+        </div>
+      )}
+
+      {request.status === 'scheduled' && request.date && request.time && (
+        <div className="mt-3 flex items-center justify-between border-t border-[var(--border)] pt-3">
+          {request.providerName ? (
+            <span className="flex items-center gap-2 text-[12px] text-[var(--text-secondary)]">
+              {request.providerAvatar && <img src={request.providerAvatar} alt="" className="h-7 w-7 rounded-full object-cover" />}
+              {request.providerName}
+            </span>
+          ) : <span />}
+          <button
+            onClick={() => onViewTracking({ requestId: request.id, date: request.date!, time: request.time! })}
+            className="flex items-center gap-1 rounded-xl bg-[#2d7ff9] px-3 py-1.5 text-[12px] font-semibold text-white"
+          >
+            Suivi <ChevronRight size={13} />
+          </button>
+        </div>
+      )}
+
+      {request.status === 'completed' && (
+        <div className="mt-3 flex justify-end border-t border-[var(--border)] pt-3">
+          <button onClick={onViewInvoice} className="flex items-center gap-1 text-[12px] font-semibold text-[var(--text-muted)]">
+            Facture <ChevronRight size={13} />
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default function RdvScreen({ onNavigate, onViewTracking, onViewInvoice, onOpenChat }: RdvScreenProps) {
+  const requests = useRequestsStore(state => state.requests)
+  const [tab, setTab] = useState<Tab>('ongoing')
+  const ongoing = requests.filter(r => r.status === 'awaiting_call' || r.status === 'scheduled')
+  const past = requests.filter(r => r.status === 'completed' || r.status === 'cancelled')
+  const displayed = tab === 'ongoing' ? ongoing : past
+
+  return (
+    <div className="relative flex h-full flex-col bg-[var(--bg-primary)]">
+      <div className="screen-scroll flex-1 overflow-y-auto pb-28">
+        <header className="px-4 pb-3 pt-5">
+          <AppHeader title="Mes demandes" onNavigate={onNavigate} />
+        </header>
+
+        <div className="mx-4 mb-4 flex rounded-2xl bg-[var(--bg-card)] p-1 shadow-[0_2px_10px_rgba(15,23,42,0.04)]">
+          {([['ongoing', 'En cours', ongoing.length], ['past', 'Terminées', past.length]] as [Tab, string, number][]).map(([key, label, count]) => (
+            <button
+              key={key}
+              onClick={() => setTab(key)}
+              className={`flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl text-[14px] font-semibold transition-colors ${
+                tab === key ? 'bg-[#2d7ff9] text-white' : 'text-[var(--text-secondary)]'
+              }`}
+            >
+              {label}
+              <span className={`rounded-full px-1.5 text-[11px] ${tab === key ? 'bg-white/25' : 'bg-[var(--bg-primary)]'}`}>{count}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="space-y-3 px-4">
+          {displayed.length === 0 ? (
+            <div className="flex flex-col items-center gap-3 py-16 text-center">
+              <ClipboardList size={40} className="text-[var(--text-muted)]" />
+              <p className="text-[14px] text-[var(--text-muted)]">
+                {tab === 'ongoing' ? 'Aucune demande en cours' : 'Aucune demande terminée'}
+              </p>
+              {tab === 'ongoing' && (
+                <button onClick={() => onNavigate('home')} className="text-[13px] font-semibold text-[#2d7ff9]">Faire une demande</button>
+              )}
+            </div>
+          ) : displayed.map(request => (
+            <RequestCard key={request.id} request={request} onViewTracking={onViewTracking} onViewInvoice={onViewInvoice} onComplete={() => onOpenChat(request.id)} />
+          ))}
+        </div>
+      </div>
+
       <TabBar active="rdv" onNavigate={onNavigate} />
     </div>
   )

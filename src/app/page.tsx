@@ -8,7 +8,7 @@ import LoginScreen from '@/components/screens/LoginScreen'
 import RegisterScreen from '@/components/screens/RegisterScreen'
 import HomeScreen from '@/components/screens/HomeScreen'
 import AllServicesScreen from '@/components/screens/AllServicesScreen'
-import ServiceScreen from '@/components/screens/ServiceScreen'
+import RequestFlowScreen from '@/components/screens/RequestFlowScreen'
 import type { BookingDetails } from '@/components/screens/ServiceScreen'
 import ServicePage from '@/components/screens/ServicePage'
 import PaymentScreen from '@/components/screens/PaymentScreen'
@@ -23,6 +23,8 @@ import AddressesScreen from '@/components/screens/AddressesScreen'
 import { AideScreen, ConfidentialiteScreen, ParametresNotifScreen, PhoneScreen, CGUScreen } from '@/components/screens/SubPages'
 import { appointmentsApi } from '@/services/api'
 import { getServiceConfig } from '@/data/services-config'
+import { useAuthStore } from '@/store/authStore'
+import { useRequestsStore } from '@/store/requestsStore'
 
 type AnyScreen = Screen | 'service-page' | 'phone' | 'cgu'
 
@@ -30,13 +32,37 @@ export default function Page() {
   const [screen, setScreen]               = useState<AnyScreen>('splash')
   const [selectedService, setSelectedService] = useState('nettoyage')
   const [servicePageId, setServicePageId]     = useState('plomberie')
-  const [rdvTracking, setRdvTracking] = useState<{ date: string; time: string } | null>(null)
+  const [rdvTracking, setRdvTracking] = useState<{ requestId?: string; date: string; time: string } | null>(null)
   const [booking, setBooking] = useState<BookingDetails | null>(null)
+
+  // Écran à ouvrir une fois connecté (l'inscription n'est demandée qu'au moment d'agir)
+  const [afterAuth, setAfterAuth] = useState<AnyScreen>('home')
+  const [authReturn, setAuthReturn] = useState<AnyScreen>('home')
+
+  const PROTECTED: AnyScreen[] = ['service-detail', 'profil']
 
   const navigate = (target: AnyScreen, serviceId?: string) => {
     if (serviceId) setSelectedService(serviceId)
+    if (PROTECTED.includes(target) && !useAuthStore.getState().isAuthenticated) {
+      setAfterAuth(target)
+      setAuthReturn(screen === 'login' || screen === 'register' ? authReturn : screen)
+      setScreen('login')
+      return
+    }
     setScreen(target)
   }
+
+  // Conversation ouverte (une demande = une conversation) et écran de retour
+  const [chatRequestId, setChatRequestId] = useState<string | null>(null)
+  const [chatReturn, setChatReturn] = useState<AnyScreen>('conversations')
+  const openChat = (requestId: string) => {
+    setChatRequestId(requestId)
+    setChatReturn(screen)
+    setScreen('chat')
+  }
+
+  const finishAuth = () => setScreen(afterAuth)
+  const cancelAuth = () => setScreen(authReturn)
 
   const openServicePage = (id: string) => {
     setServicePageId(id)
@@ -69,20 +95,19 @@ export default function Page() {
 
   return (
     <MobileWrapper>
-      {screen === 'splash'            && <SplashScreen onFinish={() => navigate('login')} />}
-      {screen === 'login'             && <LoginScreen onLogin={() => navigate('home')} onGoRegister={() => navigate('register')} />}
-      {screen === 'register'          && <RegisterScreen onBack={() => navigate('login')} onSuccess={() => navigate('home')} />}
+      {screen === 'splash'            && <SplashScreen onFinish={() => navigate('home')} />}
+      {screen === 'login'             && <LoginScreen onLogin={finishAuth} onGoRegister={() => navigate('register')} onClose={cancelAuth} />}
+      {screen === 'register'          && <RegisterScreen onBack={() => navigate('login')} onSuccess={finishAuth} />}
       {screen === 'home'              && <HomeScreen onSelectService={id => navigate('service-detail', id)} onNavigate={s => navigate(s as AnyScreen)} />}
       {screen === 'all-services'      && <AllServicesScreen onBack={() => navigate('home')} onSelectService={id => navigate('service-detail', id)} />}
       {screen === 'service-page'      && <ServicePage serviceId={servicePageId} onBack={() => navigate('notifications')} onBook={() => navigate('service-detail', servicePageId)} />}
       {screen === 'service-detail'    && (
-        <ServiceScreen
+        <RequestFlowScreen
+          key={selectedService}
           serviceId={selectedService}
           onBack={() => navigate('home')}
-          onProceed={details => {
-            setBooking(details)
-            navigate('payment')
-          }}
+          onSeeRequests={() => navigate('rdv')}
+          onHome={() => navigate('home')}
         />
       )}
       {screen === 'payment'           && (
@@ -94,24 +119,31 @@ export default function Page() {
       )}
       {screen === 'provider-tracking' && (
         <ProviderTrackingScreen
-          onBack={() => navigate('home')}
-          onMessage={() => navigate('chat')}
+          onBack={() => navigate(rdvTracking?.requestId ? 'rdv' : 'home')}
+          onMessage={() => {
+            // Conversation de la demande suivie (sinon, la première demande planifiée)
+            const requests = useRequestsStore.getState().requests
+            const target = requests.find(r => r.id === rdvTracking?.requestId) ?? requests.find(r => r.status === 'scheduled')
+            if (target) openChat(target.id)
+            else navigate('conversations')
+          }}
           appointmentDate={rdvTracking?.date ?? "Aujourd'hui"}
           appointmentTime={rdvTracking?.time ?? '14:25'}
         />
       )}
-      {screen === 'conversations'     && <ConversationsScreen onNavigate={s => navigate(s as AnyScreen)} onOpenChat={() => navigate('chat')} />}
-      {screen === 'chat'              && <ChatScreen onBack={() => navigate('conversations')} />}
+      {screen === 'conversations'     && <ConversationsScreen onNavigate={s => navigate(s as AnyScreen)} onOpenChat={openChat} />}
+      {screen === 'chat'              && <ChatScreen requestId={chatRequestId} onBack={() => navigate(chatReturn)} />}
       {screen === 'invoice'           && <InvoiceScreen onBack={() => navigate('rdv')} />}
       {screen === 'rdv'               && (
         <RdvScreen
           onNavigate={s => navigate(s as AnyScreen)}
           onViewTracking={appt => { setRdvTracking(appt); navigate('provider-tracking') }}
           onViewInvoice={() => navigate('invoice')}
+          onOpenChat={openChat}
         />
       )}
       {screen === 'notifications'     && <NotificationsScreen onNavigate={s => navigate(s as AnyScreen)} onViewServicePage={openServicePage} />}
-      {screen === 'profil'            && <ProfilScreen onNavigate={s => navigate(s as AnyScreen)} onLogout={() => navigate('login')} />}
+      {screen === 'profil'            && <ProfilScreen onNavigate={s => navigate(s as AnyScreen)} onLogout={() => { useAuthStore.getState().logout(); navigate('home') }} />}
       {screen === 'adresses'          && <AddressesScreen onBack={() => navigate('profil')} />}
       {screen === 'aide'              && <AideScreen onBack={() => navigate('profil')} />}
       {screen === 'confidentialite'   && <ConfidentialiteScreen onBack={() => navigate('profil')} />}

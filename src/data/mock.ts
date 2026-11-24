@@ -40,9 +40,9 @@ export const MOCK_CHAT_PROVIDER: Provider = {
 }
 
 export const MOCK_CONVERSATIONS: Conversation[] = [
-  { id: 'conv-1', providerName: 'Marc Ahossi', providerRole: 'Électricien', providerAvatar: '/elec2.jpeg', online: true, lastMessage: 'Est-ce que cela a sauté après avoir allumé un appareil ?', lastTime: '14:05', unread: 2, serviceType: 'Électricité' },
-  { id: 'conv-2', providerName: 'Alex Migan', providerRole: 'Plombier', providerAvatar: '/plom1.jpeg', online: false, lastMessage: 'Je serai là demain à 10h.', lastTime: 'Hier', unread: 0, serviceType: 'Plomberie' },
-  { id: 'conv-3', providerName: 'Sophie Adjovi', providerRole: 'Agent de nettoyage', providerAvatar: '/nettoy1.jpeg', online: false, lastMessage: 'Merci pour votre confiance !', lastTime: 'Lun', unread: 0, serviceType: 'Nettoyage' },
+  { id: 'conv-1', providerName: 'Marc Ahossi', providerRole: 'Électricien', providerAvatar: '/elec2.jpeg', online: true, lastMessage: 'Est-ce que cela a sauté après avoir allumé un appareil ?', lastTime: '14:05', unread: 2, serviceType: 'Électricité', requestRef: 'DEM-1042', requestTitle: 'Disjoncteur qui saute au salon', requestStatus: 'in_progress' },
+  { id: 'conv-2', providerName: 'Alex Migan', providerRole: 'Plombier', providerAvatar: '/plom1.jpeg', online: false, lastMessage: 'Je serai là demain à 10h.', lastTime: 'Hier', unread: 0, serviceType: 'Plomberie', requestRef: 'DEM-1037', requestTitle: 'Fuite sous l’évier de la cuisine', requestStatus: 'scheduled' },
+  { id: 'conv-3', providerName: 'Sophie Adjovi', providerRole: 'Agent de nettoyage', providerAvatar: '/nettoy1.jpeg', online: false, lastMessage: 'Merci pour votre confiance !', lastTime: 'Lun', unread: 0, serviceType: 'Nettoyage', requestRef: 'DEM-1019', requestTitle: 'Nettoyage complet appartement', requestStatus: 'closed' },
 ]
 
 export const MOCK_MESSAGES: Message[] = [

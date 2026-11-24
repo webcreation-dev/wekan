@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Eye, EyeOff, Lock } from 'lucide-react'
+import { Eye, EyeOff, Lock, X } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import PhoneInput from '@/components/ui/PhoneInput'
 import Image from 'next/image'
@@ -14,9 +14,11 @@ const MOCK_USERS: Record<string, { firstName: string; lastName: string; password
 interface LoginScreenProps {
   onLogin: () => void
   onGoRegister: () => void
+  /** Fermer la connexion et revenir à la navigation (connexion demandée au moment de faire une demande) */
+  onClose?: () => void
 }
 
-export default function LoginScreen({ onLogin, onGoRegister }: LoginScreenProps) {
+export default function LoginScreen({ onLogin, onGoRegister, onClose }: LoginScreenProps) {
   const [phoneRaw, setPhoneRaw] = useState('')   // 8 digits after "01"
   const [password, setPassword] = useState('')
   const [showPwd, setShowPwd] = useState(false)
@@ -49,13 +51,20 @@ export default function LoginScreen({ onLogin, onGoRegister }: LoginScreenProps)
   return (
     <div className="flex flex-col h-full bg-[var(--bg-primary)] animate-fade-in">
       {/* Header */}
-      <div className="flex flex-col items-center pt-10 pb-6 px-6">
+      {onClose && (
+        <div className="flex justify-end px-4 pt-4">
+          <button onClick={onClose} aria-label="Fermer" className="flex h-10 w-10 items-center justify-center rounded-full text-[var(--text-secondary)] active:bg-[var(--bg-surface)]">
+            <X size={22} />
+          </button>
+        </div>
+      )}
+      <div className={`flex flex-col items-center pb-6 px-6 ${onClose ? 'pt-2' : 'pt-10'}`}>
         <div className="relative w-[280px] h-[96px] overflow-hidden mb-2">
           <Image src="/logo.png" alt="Wekan" fill style={{ objectFit: 'cover' }} />
         </div>
         <h1 className="text-[22px] font-bold text-[var(--text-primary)]">Bienvenue</h1>
         <p className="text-[13px] text-[var(--text-secondary)] mt-1 text-center">
-          Connectez-vous pour accéder à nos services
+          Connectez-vous ou créez un compte pour continuer
         </p>
       </div>
 

@@ -34,7 +34,7 @@ export default function NotificationsScreen({ onNavigate, onViewServicePage }: N
         {unreadCount > 0 && <button onClick={markAllRead} className="text-[12px] font-semibold text-[#2d7ff9]">Tout marquer lu</button>}
       </div>
 
-      <div className="flex-1 overflow-y-auto screen-scroll">
+      <div className="flex-1 overflow-y-auto screen-scroll pb-28">
         {notifs.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-3">
             <Bell size={40} className="text-[var(--text-muted)]" />
@@ -85,7 +85,7 @@ export default function NotificationsScreen({ onNavigate, onViewServicePage }: N
         )}
       </div>
 
-      <TabBar active="notifications" onNavigate={screen => onNavigate(screen)} notifCount={unreadCount} />
+      <TabBar active="notifications" onNavigate={screen => onNavigate(screen)} />
     </div>
   )
 }

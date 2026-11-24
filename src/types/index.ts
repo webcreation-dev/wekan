@@ -91,6 +91,10 @@ export interface Conversation {
   lastTime: string
   unread: number
   serviceType: string
+  /** Référence de la demande (ticket) à laquelle la conversation est rattachée */
+  requestRef?: string
+  requestTitle?: string
+  requestStatus?: 'open' | 'scheduled' | 'in_progress' | 'closed'
 }
 
 export interface Message {
@@ -176,4 +180,50 @@ export interface AuthPayload {
 export interface AuthResponse {
   user: User
   token: string
+}
+
+// ─── Demandes (flow « ticket ») ──────────────────────────────────────────────
+// Une demande est créée par le client (lieu + vocal/texte), puis un agent
+// l'appelle et renseigne la date et le prix.
+
+export type RequestStatus = 'awaiting_call' | 'scheduled' | 'completed' | 'cancelled'
+
+export interface RequestLocation {
+  label: string
+  lat: number
+  lng: number
+}
+
+export interface SavedPlace extends RequestLocation {
+  id: string
+}
+
+export interface ServiceRequest {
+  id: string
+  ref: string
+  serviceId: string
+  serviceName: string
+  serviceImage: string
+  createdAt: string          // libellé lisible (« Aujourd'hui, 10:42 »)
+  location: RequestLocation | null  // null = « je le ferai plus tard »
+  voiceNote?: { url: string; durationSec: number; waveform?: number[] }
+  description?: string
+  status: RequestStatus
+  // Renseignés par l'agent après l'appel
+  date?: string
+  time?: string
+  price?: number
+  providerName?: string
+  providerAvatar?: string
+  // Conversation rattachée à la demande (une demande = une conversation)
+  messages: RequestMessage[]
+  unread: number
+}
+
+export interface RequestMessage {
+  id: string
+  sender: 'user' | 'agent'
+  time: string               // HH:MM ou libellé (« Hier »)
+  text?: string
+  voiceNote?: { url: string; durationSec: number; waveform?: number[] }
 }

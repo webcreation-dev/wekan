@@ -48,7 +48,7 @@ export default function ProfilScreen({ onNavigate, onLogout }: ProfilScreenProps
 
   return (
     <div className="flex flex-col h-full bg-[var(--bg-primary)]">
-      <div className="flex-1 overflow-y-auto screen-scroll">
+      <div className="flex-1 overflow-y-auto screen-scroll pb-28">
         {/* Avatar header */}
         <div className="px-4 pt-6 pb-5 bg-[var(--bg-card)] border-b border-[var(--border)]">
           <div className="flex items-center gap-4 mb-4">
