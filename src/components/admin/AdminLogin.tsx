@@ -1,40 +1,58 @@
 'use client'
 
 import { useState } from 'react'
-import { Eye, EyeOff, Briefcase, Lock, User } from 'lucide-react'
+import { Eye, EyeOff, Lock, Phone } from 'lucide-react'
+import { api, errorMessage } from '@/lib/api-client'
 
-interface AdminLoginProps {
-  onLogin: (role: 'superadmin' | 'admin') => void
+export interface AgentUser {
+  id: string
+  firstName: string
+  lastName: string
+  phone: string
+  role: string
 }
 
+interface AdminLoginProps {
+  onLogin: (agent: AgentUser) => void
+}
+
+/** Connexion de l'agent Wekan (compte défini par AGENT_PHONE / AGENT_PASSWORD). */
 export default function AdminLogin({ onLogin }: AdminLoginProps) {
-  const [username, setUsername] = useState('')
+  const [phone, setPhone] = useState('')
   const [password, setPassword] = useState('')
   const [showPwd, setShowPwd] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
   const handleSubmit = async () => {
-    if (!username || !password) { setError('Veuillez remplir tous les champs.'); return }
+    if (!phone || !password) { setError('Veuillez remplir tous les champs.'); return }
     setLoading(true); setError('')
-    await new Promise(r => setTimeout(r, 700))
-    if (username === 'superadmin' && password === 'admin123') { onLogin('superadmin'); return }
-    if (username === 'admin' && password === 'admin123') { onLogin('admin'); return }
-    setError('Identifiants incorrects. (superadmin / admin123)')
-    setLoading(false)
+    try {
+      const { user } = await api<{ user: AgentUser }>('/auth/login', { method: 'POST', json: { phone, password } })
+      if (user.role !== 'agent') {
+        // Un compte client ne doit pas rester connecté sur l'espace agent
+        await api('/auth/logout', { method: 'POST' }).catch(() => {})
+        setError('Ce compte n’a pas accès à l’espace agent.')
+        setLoading(false)
+        return
+      }
+      onLogin(user)
+    } catch (err) {
+      setError(errorMessage(err))
+      setLoading(false)
+    }
   }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[var(--bg-primary)] px-4">
       <div className="w-full max-w-[400px]">
-        {/* Logo */}
-      <div className='flex items-center justify-center'>
-         <img src="/logo.png" alt="Wekan" style={{ height: 200, }} />
-     </div>
+        <div className="flex items-center justify-center">
+          <img src="/logo.png" alt="Wekan" style={{ height: 200 }} />
+        </div>
 
-        {/* Card */}
         <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] p-6 shadow-xl">
-          <h2 className="text-[17px] font-bold text-[var(--text-primary)] mb-5">Connexion</h2>
+          <h2 className="text-[17px] font-bold text-[var(--text-primary)]">Espace agent</h2>
+          <p className="mb-5 mt-0.5 text-[12px] text-[var(--text-muted)]">Connectez-vous avec le compte agent Wekan.</p>
 
           {error && (
             <div className="px-4 py-3 rounded-xl bg-red-400/10 border border-red-400/20 mb-4">
@@ -44,11 +62,11 @@ export default function AdminLogin({ onLogin }: AdminLoginProps) {
 
           <div className="space-y-4">
             <div>
-              <label className="block text-[12px] font-semibold text-[var(--text-secondary)] mb-1.5">Identifiant</label>
+              <label className="block text-[12px] font-semibold text-[var(--text-secondary)] mb-1.5">Numéro de téléphone</label>
               <div className="flex items-center gap-2 bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl px-3 h-11 focus-within:border-[#2d7ff9] transition-colors">
-                <User size={15} className="text-[var(--text-muted)]" />
-                <input type="text" value={username} onChange={e => setUsername(e.target.value)}
-                  placeholder="superadmin"
+                <Phone size={15} className="text-[var(--text-muted)]" />
+                <input type="tel" inputMode="numeric" value={phone} onChange={e => setPhone(e.target.value)}
+                  placeholder="01 XX XX XX XX" autoComplete="username"
                   className="flex-1 bg-transparent text-[14px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none" />
               </div>
             </div>
@@ -59,9 +77,9 @@ export default function AdminLogin({ onLogin }: AdminLoginProps) {
                 <Lock size={15} className="text-[var(--text-muted)]" />
                 <input type={showPwd ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handleSubmit()}
-                  placeholder="••••••••"
+                  placeholder="••••••••" autoComplete="current-password"
                   className="flex-1 bg-transparent text-[14px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none" />
-                <button onClick={() => setShowPwd(v => !v)}>
+                <button type="button" onClick={() => setShowPwd(v => !v)} aria-label="Afficher le mot de passe">
                   {showPwd ? <EyeOff size={15} className="text-[var(--text-muted)]" /> : <Eye size={15} className="text-[var(--text-muted)]" />}
                 </button>
               </div>
@@ -72,10 +90,6 @@ export default function AdminLogin({ onLogin }: AdminLoginProps) {
               {loading ? 'Connexion...' : 'Se connecter'}
             </button>
           </div>
-
-          <p className="text-center text-[11px] text-[var(--text-muted)] mt-4">
-            Démo : superadmin / admin123
-          </p>
         </div>
       </div>
     </div>

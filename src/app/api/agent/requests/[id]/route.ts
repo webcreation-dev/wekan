@@ -35,8 +35,34 @@ export const PATCH = handler(async (req: Request, { params }: { params: { id: st
   if (body.providerAvatar !== undefined) data.providerAvatar = str(body.providerAvatar, 300) || null
   if (!data.status && data.date && data.price != null) data.status = 'scheduled'
 
-  const exists = await db.request.findUnique({ where: { id: params.id }, select: { id: true } })
-  if (!exists) throw new ApiError(404, 'Demande introuvable.')
-  const request = await db.request.update({ where: { id: params.id }, data, include: withMessages })
+  const before = await db.request.findUnique({ where: { id: params.id } })
+  if (!before) throw new ApiError(404, 'Demande introuvable.')
+  await db.request.update({ where: { id: params.id }, data })
+
+  // Le client est prévenu dans la conversation de sa demande
+  const after = { ...before, ...data } as typeof before
+  const notice = clientNotice(before, after)
+  if (notice) {
+    await db.$transaction([
+      db.message.create({ data: { requestId: before.id, sender: 'agent', text: notice } }),
+      db.request.update({ where: { id: before.id }, data: { clientUnread: { increment: 1 } } }),
+    ])
+  }
+
+  const request = await db.request.findUniqueOrThrow({ where: { id: params.id }, include: withMessages })
   return NextResponse.json({ request: toRequestDto(request, 'agent') })
 })
+
+type RequestRow = { status: string; date: string | null; time: string | null; price: number | null; providerName: string | null }
+
+/** Message automatique envoyé au client quand la planification ou le statut change. */
+function clientNotice(before: RequestRow, after: RequestRow): string | null {
+  if (after.status !== before.status && after.status === 'completed') return 'Votre intervention est terminée. Merci d’avoir fait confiance à Wekan !'
+  if (after.status !== before.status && after.status === 'cancelled') return 'Votre demande a été annulée. Contactez-nous ici si besoin.'
+  const planChanged = after.date !== before.date || after.time !== before.time || after.price !== before.price || after.providerName !== before.providerName
+  if (after.status !== 'scheduled' || (!planChanged && before.status === 'scheduled')) return null
+  const lines = [`${before.status === 'scheduled' ? 'Mise à jour de votre intervention' : 'Votre intervention est planifiée'} : ${after.date ?? 'date à confirmer'}${after.time ? ` à ${after.time}` : ''}.`]
+  if (after.price != null) lines.push(`Prix convenu : ${after.price.toLocaleString('fr-FR')} FCFA. Vous pouvez payer une avance depuis « Mes demandes ».`)
+  if (after.providerName) lines.push(`Artisan : ${after.providerName}.`)
+  return lines.join('\n')
+}

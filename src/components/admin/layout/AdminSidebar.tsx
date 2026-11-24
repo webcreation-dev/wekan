@@ -8,11 +8,13 @@ interface AdminSidebarProps {
   onNavigate: (v: AdminView) => void
   onLogout: () => void
   role: 'superadmin' | 'admin'
+  /** Demandes en attente d'appel (badge du menu « Demandes ») */
+  requestsBadge?: number
 }
 
 const NAV = [
   { id: 'dashboard',  label: 'Dashboard',       icon: LayoutDashboard },
-  { id: 'requests',   label: 'Demandes',         icon: ClipboardList,  badge: 23 },
+  { id: 'requests',   label: 'Demandes',         icon: ClipboardList },
   { id: 'providers',  label: 'Prestataires',     icon: Briefcase },
   { id: 'clients',    label: 'Clients',          icon: Users },
   { id: 'finance',    label: 'Finance',          icon: DollarSign },
@@ -21,7 +23,7 @@ const NAV = [
   { id: 'settings',   label: 'Paramètres',       icon: Settings },
 ] as const
 
-export default function AdminSidebar({ active, onNavigate, onLogout, role }: AdminSidebarProps) {
+export default function AdminSidebar({ active, onNavigate, onLogout, role, requestsBadge }: AdminSidebarProps) {
   return (
     <aside className="w-[220px] flex-shrink-0 flex flex-col h-full bg-[#0d1b2a] border-r border-[#1e3a52]">
       {/* Logo */}
@@ -48,8 +50,8 @@ export default function AdminSidebar({ active, onNavigate, onLogout, role }: Adm
               }`}>
               <Icon size={17} className="flex-shrink-0" />
               <span className="text-[13px] font-medium flex-1 text-left">{item.label}</span>
-              {'badge' in item && item.badge && (
-                <span className="text-[10px] font-bold bg-red-500 text-white px-1.5 py-0.5 rounded-full">{item.badge}</span>
+              {item.id === 'requests' && !!requestsBadge && (
+                <span className="text-[10px] font-bold bg-red-500 text-white px-1.5 py-0.5 rounded-full">{requestsBadge}</span>
               )}
             </button>
           )

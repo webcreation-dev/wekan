@@ -1,6 +1,6 @@
 'use client'
 
-import { Bell, Search, Sun, Moon, User, ChevronDown } from 'lucide-react'
+import { Bell, Search, Sun, Moon } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { useEffect, useState } from 'react'
 import { AdminView } from '@/types/admin'
@@ -19,10 +19,11 @@ const VIEW_TITLES: Record<AdminView, string> = {
 interface AdminTopbarProps {
   view: AdminView
   role: 'superadmin' | 'admin'
-  onShowProfile: () => void
+  /** Nom affiché à droite (compte agent connecté) */
+  agentName: string
 }
 
-export default function AdminTopbar({ view, role, onShowProfile }: AdminTopbarProps) {
+export default function AdminTopbar({ view, agentName }: AdminTopbarProps) {
   const { theme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
   const [now, setNow] = useState(new Date())
@@ -67,16 +68,15 @@ export default function AdminTopbar({ view, role, onShowProfile }: AdminTopbarPr
         )}
 
         {/* Admin profile */}
-        <button onClick={onShowProfile} className="flex items-center gap-2 pl-3 border-l border-[var(--border)] hover:opacity-80 transition-opacity">
+        <div className="flex items-center gap-2 pl-3 border-l border-[var(--border)]">
           <div className="w-8 h-8 rounded-full bg-[#2d7ff9] flex items-center justify-center flex-shrink-0">
-            <span className="text-white text-[13px] font-bold">A</span>
+            <span className="text-white text-[13px] font-bold">{agentName.charAt(0).toUpperCase()}</span>
           </div>
           <div>
-            <p className="text-[12px] font-bold text-[var(--text-primary)] leading-none">Admin</p>
-            <p className="text-[10px] text-[var(--text-muted)]">{role === 'superadmin' ? 'Super Admin' : 'Admin'}</p>
+            <p className="text-[12px] font-bold text-[var(--text-primary)] leading-none">{agentName}</p>
+            <p className="text-[10px] text-[var(--text-muted)]">Agent Wekan</p>
           </div>
-          <ChevronDown size={13} className="text-[var(--text-muted)]" />
-        </button>
+        </div>
       </div>
     </header>
   )
