@@ -11,7 +11,8 @@ import { useEffect, useRef, useState } from 'react'
 import { ChevronLeft, ChevronUp, Lock, Mic, Pause, Play, Send, Trash2 } from 'lucide-react'
 import { ServiceRequest } from '@/types'
 
-export type VoiceNoteData = NonNullable<ServiceRequest['voiceNote']>
+/** Vocal côté client : `blob` est présent tant qu'il n'a pas été envoyé au serveur. */
+export type VoiceNoteData = NonNullable<ServiceRequest['voiceNote']> & { blob?: Blob }
 
 const ACCENT = '#2d7ff9'
 const CANCEL_DISTANCE = 110 // px vers la gauche
@@ -102,6 +103,7 @@ function useVoiceRecorder(onDone: (note: VoiceNoteData) => void) {
         }
         const blob = new Blob(chunks, { type: recorder.mimeType })
         onDone({
+          blob,
           url: URL.createObjectURL(blob),
           durationSec: Math.max(1, Math.round(duration / 1000)),
           waveform: downsample(levelsRef.current, BUBBLE_BARS),

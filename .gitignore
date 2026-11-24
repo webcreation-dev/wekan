@@ -12,3 +12,8 @@ out/
 # Logs and operating-system metadata
 *.log
 .DS_Store
+
+# Base SQLite locale et fichiers envoyés (vocaux)
+prisma/*.db
+prisma/*.db-journal
+storage/

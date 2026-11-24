@@ -215,6 +215,8 @@ export interface ServiceRequest {
   price?: number
   providerName?: string
   providerAvatar?: string
+  /** Total déjà payé (avances comprises) */
+  paidAmount?: number
   // Conversation rattachée à la demande (une demande = une conversation)
   messages: RequestMessage[]
   unread: number
@@ -226,4 +228,15 @@ export interface RequestMessage {
   time: string               // HH:MM ou libellé (« Hier »)
   text?: string
   voiceNote?: { url: string; durationSec: number; waveform?: number[] }
+}
+
+export type PaymentOperator = 'MTN' | 'MOOV' | 'CELTIIS'
+export type PaymentStatus = 'pending' | 'succeeded' | 'failed'
+
+export interface RequestPayment {
+  id: string
+  amount: number
+  operator: PaymentOperator
+  msisdn: string
+  status: PaymentStatus
 }

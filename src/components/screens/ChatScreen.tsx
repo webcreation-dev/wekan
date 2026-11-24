@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { ChevronLeft, Phone, ExternalLink, MessageCircle } from 'lucide-react'
-import { useRequestsStore, WEKAN_AGENT } from '@/store/requestsStore'
+import { DraftMessage, useRequestsStore, WEKAN_AGENT } from '@/store/requestsStore'
+import { errorMessage } from '@/lib/api-client'
 import { VoiceBubble, VoiceComposer } from '@/components/ui/VoiceNote'
 
 interface ChatScreenProps {
@@ -77,17 +78,28 @@ export default function ChatScreen({ requestId, onBack }: ChatScreenProps) {
   const request = useRequestsStore(state => state.requests.find(r => r.id === requestId))
   const sendMessage = useRequestsStore(state => state.sendMessage)
   const markRead = useRequestsStore(state => state.markRead)
+  const loadRequest = useRequestsStore(state => state.loadRequest)
   const bottomRef = useRef<HTMLDivElement>(null)
   const [text, setText] = useState('')
+  const [sending, setSending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [showContact, setShowContact] = useState(false)
 
-  useEffect(() => { if (requestId) markRead(requestId) }, [requestId, markRead])
+  // Chargement puis actualisation régulière (réponses de l'agent)
+  useEffect(() => {
+    if (!requestId) return
+    loadRequest(requestId).catch(() => {})
+    const timer = setInterval(() => loadRequest(requestId).catch(() => {}), 4000)
+    return () => clearInterval(timer)
+  }, [requestId, loadRequest])
+
+  useEffect(() => { if (requestId && request?.unread) markRead(requestId) }, [requestId, request?.unread, markRead])
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [request?.messages.length])
 
   if (!request) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 bg-[var(--bg-primary)]">
-        <p className="text-[var(--text-muted)]">Conversation introuvable</p>
+        <p className="text-[var(--text-muted)]">Chargement de la conversation…</p>
         <button onClick={onBack} className="font-semibold text-[#2d7ff9]">Retour</button>
       </div>
     )
@@ -98,11 +110,24 @@ export default function ChatScreen({ requestId, onBack }: ChatScreenProps) {
     ? { name: request.providerName, avatar: request.providerAvatar ?? WEKAN_AGENT.avatar }
     : WEKAN_AGENT
 
-  const sendText = () => {
+  const send = async (message: DraftMessage) => {
+    setSending(true); setError(null)
+    try {
+      await sendMessage(request.id, message)
+      return true
+    } catch (err) {
+      setError(errorMessage(err))
+      return false
+    } finally {
+      setSending(false)
+    }
+  }
+
+  const sendText = async () => {
     const value = text.trim()
-    if (!value) return
-    sendMessage(request.id, { text: value })
+    if (!value || sending) return
     setText('')
+    if (!(await send({ text: value }))) setText(value)
   }
 
   return (
@@ -161,11 +186,14 @@ export default function ChatScreen({ requestId, onBack }: ChatScreenProps) {
 
       {/* Saisie : texte ou vocal (façon WhatsApp) */}
       <div className="border-t border-[var(--border)] px-3 pb-5 pt-3">
+        {(error || sending) && (
+          <p className={`mb-2 text-center text-[12px] ${error ? 'text-red-500' : 'text-[var(--text-muted)]'}`}>{error ?? 'Envoi…'}</p>
+        )}
         <VoiceComposer
           text={text}
           onTextChange={setText}
           onSendText={sendText}
-          onVoice={note => sendMessage(request.id, { voiceNote: note })}
+          onVoice={note => { send({ voiceNote: note }) }}
           placeholder="Écrire un message…"
         />
       </div>

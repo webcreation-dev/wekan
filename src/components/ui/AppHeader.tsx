@@ -16,13 +16,13 @@ export default function AppHeader({ title, onNavigate }: AppHeaderProps) {
 
   return (
     <div className="flex items-center justify-between gap-3">
-      {/* Notifications : rond blanc, icône pleine colorée */}
+      {/* Notifications : rond blanc, icône pleine grise */}
       <button
         onClick={() => onNavigate('notifications')}
         aria-label="Voir les notifications"
         className="flex h-[38px] w-[38px] flex-shrink-0 items-center justify-center rounded-full bg-[var(--bg-card)] shadow-[0_3px_12px_rgba(15,23,42,0.12)] transition-transform active:scale-95 dark:border dark:border-white/10"
       >
-        <Bell size={18} strokeWidth={2} className="fill-[#e5383b] text-[#e5383b]" />
+        <Bell size={18} strokeWidth={2} className="fill-[#9ca3af] text-[#9ca3af]" />
       </button>
 
       {title

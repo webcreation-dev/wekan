@@ -16,6 +16,7 @@ import { RequestLocation, ServiceRequest } from '@/types'
 import { getRequestService } from '@/data/trades'
 import { DraftMessage, useRequestsStore } from '@/store/requestsStore'
 import GoogleMapsIcon from '@/components/ui/GoogleMapsIcon'
+import { errorMessage } from '@/lib/api-client'
 import { VoiceBubble, VoiceComposer } from '@/components/ui/VoiceNote'
 
 const ACCENT = '#2d7ff9'
@@ -55,14 +56,15 @@ function FlowHeader({ title, step, onBack }: { title: string; step: 1 | 2; onBac
   )
 }
 
-function PrimaryButton({ children, onClick, disabled }: { children: React.ReactNode; onClick: () => void; disabled?: boolean }) {
+function PrimaryButton({ children, onClick, disabled, loading }: { children: React.ReactNode; onClick: () => void; disabled?: boolean; loading?: boolean }) {
   return (
     <button
       onClick={onClick}
-      disabled={disabled}
+      disabled={disabled || loading}
       className="flex h-[54px] w-full items-center justify-center gap-2 rounded-2xl text-[16px] font-semibold text-white shadow-[0_8px_18px_rgba(45,127,249,0.28)] transition-all active:scale-[0.98] disabled:opacity-40 disabled:shadow-none"
       style={{ backgroundColor: ACCENT }}
     >
+      {loading && <Loader2 size={20} className="animate-spin" />}
       {children}
     </button>
   )
@@ -87,7 +89,10 @@ function LocationStep({ serviceName, serviceImage, onBack, onNext }: {
   onBack: () => void
   onNext: (location: RequestLocation | null) => void
 }) {
-  const { savedPlaces, savePlace } = useRequestsStore()
+  const { savedPlaces, savePlace, loadPlaces } = useRequestsStore()
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  useEffect(() => { loadPlaces() }, [loadPlaces])
   const [selectedId, setSelectedId] = useState<string | null>(null) // 'current' ou id d'un lieu enregistré
   const [current, setCurrent] = useState<{ lat: number; lng: number } | null>(null)
   const [locating, setLocating] = useState(false)
@@ -118,10 +123,14 @@ function LocationStep({ serviceName, serviceImage, onBack, onNext }: {
     )
   }
 
-  const confirm = () => {
+  const confirm = async () => {
     if (selectedId === 'current' && current) {
       const location = { label: saveIt ? placeLabel : 'Position actuelle', ...current }
-      if (saveIt) savePlace(location)
+      if (saveIt) {
+        setSaving(true); setSaveError(null)
+        try { await savePlace(location) } catch (err) { setSaveError(errorMessage(err)); setSaving(false); return }
+        setSaving(false)
+      }
       onNext(location)
       return
     }
@@ -231,7 +240,8 @@ function LocationStep({ serviceName, serviceImage, onBack, onNext }: {
       </div>
 
       <div className="flex-shrink-0 space-y-2 bg-[var(--bg-primary)] px-4 pb-6 pt-3">
-        <PrimaryButton onClick={confirm} disabled={!selectedId}>Continuer</PrimaryButton>
+        {saveError && <p className="text-center text-[12px] text-red-500">{saveError}</p>}
+        <PrimaryButton onClick={confirm} disabled={!selectedId} loading={saving}>Continuer</PrimaryButton>
         <button onClick={() => onNext(null)} className="h-11 w-full text-[14px] font-semibold text-[#2d7ff9]">
           Je le ferai plus tard
         </button>
@@ -249,9 +259,11 @@ function ProblemStep({ serviceName, serviceImage, location, onBack, onSubmit }: 
   serviceImage: string
   location: RequestLocation | null
   onBack: () => void
-  onSubmit: (messages: DraftMessage[]) => void
+  onSubmit: (messages: DraftMessage[]) => Promise<void>
 }) {
   const [drafts, setDrafts] = useState<Draft[]>([])
+  const [sending, setSending] = useState(false)
+  const [sendError, setSendError] = useState<string | null>(null)
   const [text, setText] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
   const pendingText = text.trim()
@@ -273,10 +285,18 @@ function ProblemStep({ serviceName, serviceImage, location, onBack, onSubmit }: 
   }
 
   // Le texte encore dans le champ est aussi envoyé
-  const submit = () => onSubmit([
-    ...drafts.map(({ text, voiceNote }) => ({ text, voiceNote })),
-    ...(pendingText ? [{ text: pendingText }] : []),
-  ])
+  const submit = async () => {
+    setSending(true); setSendError(null)
+    try {
+      await onSubmit([
+        ...drafts.map(({ text, voiceNote }) => ({ text, voiceNote })),
+        ...(pendingText ? [{ text: pendingText }] : []),
+      ])
+    } catch (err) {
+      setSendError(errorMessage(err))
+      setSending(false)
+    }
+  }
 
   return (
     <div className="flex h-full flex-col bg-[var(--bg-primary)]">
@@ -317,8 +337,9 @@ function ProblemStep({ serviceName, serviceImage, location, onBack, onSubmit }: 
           onVoice={note => add({ voiceNote: note })}
           placeholder="Écrire un message…"
         />
-        <PrimaryButton onClick={submit} disabled={!canSubmit}>
-          Envoyer ma demande
+        {sendError && <p className="text-center text-[12px] text-red-500">{sendError}</p>}
+        <PrimaryButton onClick={submit} disabled={!canSubmit} loading={sending}>
+          {sending ? 'Envoi en cours…' : 'Envoyer ma demande'}
         </PrimaryButton>
       </div>
     </div>
@@ -378,14 +399,8 @@ export default function RequestFlowScreen({ serviceId, onBack, onSeeRequests, on
         serviceImage={service.image}
         location={location}
         onBack={() => setStep('location')}
-        onSubmit={messages => {
-          setCreated(createRequest({
-            serviceId: service.id,
-            serviceName: service.name,
-            serviceImage: service.image,
-            location,
-            messages,
-          }))
+        onSubmit={async messages => {
+          setCreated(await createRequest({ serviceId: service.id, location, messages }))
           setStep('done')
         }}
       />

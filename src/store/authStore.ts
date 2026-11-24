@@ -1,32 +1,58 @@
-// ─── Global App Store ─────────────────────────────────────────────────────────
-// Single source of truth for auth state.
-// Accessible from any component without prop drilling.
+// ─── Session utilisateur ─────────────────────────────────────────────────────
+// Source de vérité : le serveur (cookie de session). Ce store en garde une copie.
 
 import { create } from 'zustand'
 import { User } from '@/types'
+import { api } from '@/lib/api-client'
+
+interface RegisterInput {
+  firstName: string
+  lastName: string
+  phone: string
+  password: string
+}
 
 interface AuthStore {
   user: User | null
-  token: string | null
   isAuthenticated: boolean
-  login: (user: User, token: string) => void
-  logout: () => void
+  /** true une fois la session vérifiée auprès du serveur */
+  hydrated: boolean
+  hydrate: () => Promise<void>
+  signIn: (phone: string, password: string) => Promise<void>
+  signUp: (input: RegisterInput) => Promise<void>
+  signOut: () => Promise<void>
   updateUser: (patch: Partial<User>) => void
 }
 
 export const useAuthStore = create<AuthStore>((set) => ({
   user: null,
-  token: null,
   isAuthenticated: false,
+  hydrated: false,
 
-  login: (user, token) =>
-    set({ user, token, isAuthenticated: true }),
+  hydrate: async () => {
+    try {
+      const { user } = await api<{ user: User | null }>('/auth/me')
+      set({ user, isAuthenticated: !!user, hydrated: true })
+    } catch {
+      set({ user: null, isAuthenticated: false, hydrated: true })
+    }
+  },
 
-  logout: () =>
-    set({ user: null, token: null, isAuthenticated: false }),
+  signIn: async (phone, password) => {
+    const { user } = await api<{ user: User }>('/auth/login', { method: 'POST', json: { phone, password } })
+    set({ user, isAuthenticated: true })
+  },
+
+  signUp: async input => {
+    const { user } = await api<{ user: User }>('/auth/register', { method: 'POST', json: input })
+    set({ user, isAuthenticated: true })
+  },
+
+  signOut: async () => {
+    await api('/auth/logout', { method: 'POST' }).catch(() => {})
+    set({ user: null, isAuthenticated: false })
+  },
 
   updateUser: (patch) =>
-    set((state) => ({
-      user: state.user ? { ...state.user, ...patch } : null,
-    })),
+    set((state) => ({ user: state.user ? { ...state.user, ...patch } : null })),
 }))

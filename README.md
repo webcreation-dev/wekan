@@ -5,46 +5,49 @@ Wekan est une application de mise en relation entre clients et prestataires de s
 ## Lancer le projet
 
 ```bash
-npm ci
-cp .env.example .env.local
+npm ci                 # installe aussi le client Prisma
+cp .env.example .env   # puis changer AGENT_PASSWORD
+npm run db:migrate     # crée la base SQLite (prisma/dev.db)
+npm run db:seed        # crée le compte agent (AGENT_PHONE / AGENT_PASSWORD)
 npm run dev
 ```
 
-L'application est alors disponible sur `http://127.0.0.1:3000`.
+L'application est alors disponible sur `http://localhost:3000`.
 
-## Vérifier une version de production
+## Backend
 
-```bash
-npm run build
-npm run start
-```
+Le backend est intégré à Next.js (`src/app/api`), avec Prisma et SQLite.
 
-## Configuration
+- **Comptes** : inscription et connexion par numéro + mot de passe (haché avec scrypt), session par cookie httpOnly.
+- **Demandes** : une demande = une conversation. Les vocaux et messages saisis à la création deviennent les premiers messages.
+- **Vocaux** : envoyés via `POST /api/voices`, stockés dans `storage/voices`, lisibles uniquement par leur auteur, le client de la demande et les agents.
+- **Lieux enregistrés** : par utilisateur.
 
-Par défaut, Wekan fonctionne en mode démo avec des données locales :
+### Routes
 
-```env
-NEXT_PUBLIC_USE_MOCK=true
-```
+| Méthode | Route | Rôle |
+|---|---|---|
+| POST | `/api/auth/register`, `/api/auth/login`, `/api/auth/logout` | Comptes |
+| GET | `/api/auth/me` | Session courante |
+| GET / POST | `/api/requests` | Mes demandes / créer une demande |
+| GET | `/api/requests/:id` | Une demande et sa conversation |
+| POST | `/api/requests/:id/messages`, `/api/requests/:id/read` | Écrire, marquer comme lu |
+| POST / GET | `/api/voices`, `/api/voices/:id` | Envoyer / écouter un vocal |
+| GET / POST / DELETE | `/api/places`, `/api/places/:id` | Lieux enregistrés |
+| POST | `/api/requests/:id/payments` | Payer une avance (ou le solde) : `{ amount, operator, msisdn }` |
+| GET | `/api/payments/:id` | État d'un paiement (interrogé pendant la validation) |
+| GET | `/api/agent/requests` | Agent : toutes les demandes (`?status=awaiting_call`) |
+| PATCH | `/api/agent/requests/:id` | Agent : fixer date, heure, prix, prestataire, statut |
+| POST | `/api/agent/requests/:id/messages`, `/api/agent/requests/:id/read` | Agent : répondre, marquer comme lu |
 
-Pour connecter une API réelle, renseigner l'URL et désactiver le mode démo :
+`npm run db:studio` ouvre une interface pour consulter la base.
 
-```env
-NEXT_PUBLIC_USE_MOCK=false
-NEXT_PUBLIC_API_URL=https://api.example.com/v1
-```
+## Avant la production
 
-## État de déploiement
-
-Le front peut être déployé dès maintenant comme démonstration interactive. Les réservations créées dans ce mode restent uniquement en mémoire pendant la session du navigateur.
-
-Avant une mise en production destinée à de vrais utilisateurs, il faut intégrer :
-
-- une API avec base de données pour les comptes, services, rendez-vous, messages et factures ;
-- une authentification côté serveur avec des sessions ou jetons sécurisés ;
-- un prestataire de paiement réel pour MTN MoMo, Flooz, Celtiis et les cartes ;
-- une protection serveur de la route `/admin` (les identifiants de démonstration ne doivent jamais être utilisés en production) ;
-- des services de cartographie et de notifications adaptés aux volumes réels.
+- Passer à PostgreSQL : `provider = "postgresql"` dans `prisma/schema.prisma` et `DATABASE_URL` vers la base, puis `npm run db:deploy`.
+- Sur un hébergement serverless (Vercel…), stocker les vocaux dans un stockage objet (S3, R2, Vercel Blob) : seul `src/lib/server/storage.ts` change.
+- Brancher l'interface `/admin` sur les routes agent (elle utilise encore des données de démonstration).
+- Prestataire de paiement réel : implémenter `initiate` et `check` dans `src/lib/server/payment-provider.ts` (FedaPay, Kkiapay, MTN MoMo…) et définir `PAYMENT_PROVIDER`. En mode `simulation`, aucun argent ne bouge.
 
 ## Hygiène Git
 

@@ -4,12 +4,8 @@ import { useState } from 'react'
 import { Eye, EyeOff, Lock, X } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import PhoneInput from '@/components/ui/PhoneInput'
+import { errorMessage } from '@/lib/api-client'
 import Image from 'next/image'
-
-const MOCK_USERS: Record<string, { firstName: string; lastName: string; password: string }> = {
-  '97123456': { firstName: 'Kofi', lastName: 'Mensah', password: 'admin123' },
-  '96789012': { firstName: 'Ama', lastName: 'Koffi', password: 'test123' },
-}
 
 interface LoginScreenProps {
   onLogin: () => void
@@ -24,28 +20,24 @@ export default function LoginScreen({ onLogin, onGoRegister, onClose }: LoginScr
   const [showPwd, setShowPwd] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [greeting, setGreeting] = useState<string | null>(null)
-  const login = useAuthStore(s => s.login)
+  const signIn = useAuthStore(s => s.signIn)
 
-  const handlePhoneChange = (raw: string, full: string) => {
+  const handlePhoneChange = (raw: string) => {
     setPhoneRaw(raw)
-    const found = MOCK_USERS[raw]
-    setGreeting(found ? `Bonjour ${found.firstName} ! 👋` : null)
     setError('')
   }
 
   const handleSubmit = async () => {
     if (!phoneRaw || !password) { setError('Veuillez remplir tous les champs.'); return }
     setLoading(true); setError('')
-    await new Promise(r => setTimeout(r, 700))
-    const found = MOCK_USERS[phoneRaw]
-    if (found) {
-      login({ id: 'u1', firstName: found.firstName, lastName: found.lastName, phone: '01' + phoneRaw }, 'mock-token')
-    } else {
-      login({ id: 'u1', firstName: 'Utilisateur', lastName: '', phone: '01' + phoneRaw }, 'mock-token')
+    try {
+      await signIn('01' + phoneRaw, password)
+      onLogin()
+    } catch (err) {
+      setError(errorMessage(err))
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
-    onLogin()
   }
 
   return (
@@ -72,11 +64,6 @@ export default function LoginScreen({ onLogin, onGoRegister, onClose }: LoginScr
         {error && (
           <div className="px-4 py-3 rounded-xl bg-red-400/10 border border-red-400/20">
             <p className="text-[13px] text-red-400">{error}</p>
-          </div>
-        )}
-        {greeting && (
-          <div className="px-4 py-3 rounded-xl bg-[#2d7ff9]/10 border border-[#2d7ff9]/20 animate-fade-in">
-            <p className="text-[13px] font-semibold text-[#2d7ff9]">{greeting} Ravi de vous revoir.</p>
           </div>
         )}
 
@@ -133,11 +120,6 @@ export default function LoginScreen({ onLogin, onGoRegister, onClose }: LoginScr
         >
           Créer un compte
         </button>
-
-        <p className="text-center text-[11px] text-[var(--text-muted)]">
-          En vous connectant, vous acceptez nos{' '}
-          <span className="text-[#2d7ff9]">Conditions d&apos;utilisation</span>
-        </p>
       </div>
     </div>
   )

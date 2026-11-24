@@ -1,0 +1,116 @@
+// Base de données Wekan (SQLite en développement).
+// Pour PostgreSQL : provider = "postgresql" et DATABASE_URL vers la base.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String       @id @default(cuid())
+  firstName    String
+  lastName     String       @default("")
+  phone        String       @unique
+  passwordHash String
+  role         String       @default("client") // "client" | "agent"
+  createdAt    DateTime     @default(now())
+  sessions     Session[]
+  requests     Request[]
+  places       SavedPlace[]
+  voices       Voice[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+/// Une demande = un ticket = une conversation
+model Request {
+  id             String    @id @default(cuid())
+  number         Int       @unique // référence affichée : DEM-<number>
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  serviceId      String
+  serviceName    String
+  serviceImage   String
+  locationLabel  String?
+  lat            Float?
+  lng            Float?
+  status         String    @default("awaiting_call") // awaiting_call | scheduled | completed | cancelled
+  // Renseignés par l'agent après l'appel
+  date           String?
+  time           String?
+  price          Int?
+  providerName   String?
+  providerAvatar String?
+  clientUnread   Int       @default(0)
+  agentUnread    Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  messages       Message[]
+  payments       Payment[]
+
+  @@index([userId])
+}
+
+/// Paiement Mobile Money (avance ou solde) sur une demande
+model Payment {
+  id          String   @id @default(cuid())
+  requestId   String
+  request     Request  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  userId      String
+  amount      Int
+  operator    String   // MTN | MOOV | CELTIIS
+  msisdn      String   // numéro débité
+  status      String   @default("pending") // pending | succeeded | failed
+  providerRef String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([requestId])
+}
+
+model Message {
+  id        String   @id @default(cuid())
+  requestId String
+  request   Request  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  sender    String   // "user" | "agent"
+  text      String?
+  voiceId   String?
+  voice     Voice?   @relation(fields: [voiceId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@index([requestId])
+}
+
+/// Fichier audio d'un message vocal (stocké sur disque dans storage/voices)
+model Voice {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fileName    String
+  mimeType    String
+  durationSec Int
+  waveform    String    @default("[]") // JSON number[]
+  createdAt   DateTime  @default(now())
+  messages    Message[]
+}
+
+model SavedPlace {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label     String
+  lat       Float
+  lng       Float
+  createdAt DateTime @default(now())
+}

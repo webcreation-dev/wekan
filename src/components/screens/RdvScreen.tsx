@@ -1,9 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Calendar, CheckCircle, ChevronRight, ClipboardList, MapPin, Mic, Phone, UserRound, Wallet, XCircle } from 'lucide-react'
 import { RequestStatus, Screen, ServiceRequest } from '@/types'
 import { useRequestsStore } from '@/store/requestsStore'
+import { useAuthStore } from '@/store/authStore'
 import TabBar from '@/components/ui/TabBar'
 import AppHeader from '@/components/ui/AppHeader'
 
@@ -13,6 +14,8 @@ interface RdvScreenProps {
   onViewInvoice: () => void
   /** Ouvre la conversation de la demande (pour compléter les informations) */
   onOpenChat: (requestId: string) => void
+  /** Ouvre le paiement (avance) d'une demande dont le prix est fixé */
+  onPay: (requestId: string) => void
 }
 
 const STATUS_CONFIG: Record<RequestStatus, { label: string; Icon: typeof CheckCircle; className: string }> = {
@@ -24,22 +27,24 @@ const STATUS_CONFIG: Record<RequestStatus, { label: string; Icon: typeof CheckCi
 
 type Tab = 'ongoing' | 'past'
 
-function InfoCell({ icon: Icon, label, value }: { icon: typeof Calendar; label: string; value?: string }) {
+function InfoCell({ icon: Icon, label, value, hint }: { icon: typeof Calendar; label: string; value?: string; hint?: string }) {
   return (
     <div className="flex-1 rounded-xl bg-[var(--bg-primary)] px-3 py-2.5">
       <p className="flex items-center gap-1 text-[11px] text-[var(--text-muted)]"><Icon size={12} /> {label}</p>
       <p className={`mt-0.5 text-[13px] font-bold ${value ? 'text-[var(--text-primary)]' : 'italic text-[var(--text-muted)]'}`}>
         {value ?? 'À définir'}
       </p>
+      {hint && <p className="mt-0.5 text-[10px] font-medium text-emerald-600">{hint}</p>}
     </div>
   )
 }
 
-function RequestCard({ request, onViewTracking, onViewInvoice, onComplete }: {
+function RequestCard({ request, onViewTracking, onViewInvoice, onComplete, onPay }: {
   request: ServiceRequest
   onViewTracking: RdvScreenProps['onViewTracking']
   onViewInvoice: () => void
   onComplete: () => void
+  onPay: () => void
 }) {
   const cfg = STATUS_CONFIG[request.status]
   const StatusIcon = cfg.Icon
@@ -47,6 +52,8 @@ function RequestCard({ request, onViewTracking, onViewInvoice, onComplete }: {
   const price = request.price != null ? `${request.price.toLocaleString('fr-FR')} FCFA` : undefined
   // Tant que l'agent n'a pas appelé, la carte reste minimale (pas de vocal, lieu, date ni prix)
   const awaitingCall = request.status === 'awaiting_call'
+  const paid = request.paidAmount ?? 0
+  const remaining = request.price != null ? Math.max(0, request.price - paid) : 0
   // Vocaux envoyés par le client (étape 2 + conversation)
   const voices = request.messages.filter(m => m.sender === 'user' && m.voiceNote)
   const firstVoice = voices[0]?.voiceNote
@@ -90,7 +97,7 @@ function RequestCard({ request, onViewTracking, onViewInvoice, onComplete }: {
           {/* Date et prix : renseignés par l'agent après l'appel */}
           <div className="mt-3 flex gap-2">
             <InfoCell icon={Calendar} label="Rendez-vous" value={when} />
-            <InfoCell icon={Wallet} label="Prix" value={price} />
+            <InfoCell icon={Wallet} label="Prix" value={price} hint={paid > 0 && remaining > 0 ? `Payé ${paid.toLocaleString('fr-FR')} · reste ${remaining.toLocaleString('fr-FR')}` : undefined} />
           </div>
         </>
       )}
@@ -121,12 +128,23 @@ function RequestCard({ request, onViewTracking, onViewInvoice, onComplete }: {
               {request.providerName}
             </span>
           ) : <span />}
-          <button
-            onClick={() => onViewTracking({ requestId: request.id, date: request.date!, time: request.time! })}
-            className="flex items-center gap-1 rounded-xl bg-[#2d7ff9] px-3 py-1.5 text-[12px] font-semibold text-white"
-          >
-            Suivi <ChevronRight size={13} />
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => onViewTracking({ requestId: request.id, date: request.date!, time: request.time! })}
+              className="flex items-center gap-1 rounded-xl bg-[#2d7ff9] px-3 py-1.5 text-[12px] font-semibold text-white"
+            >
+              Suivi <ChevronRight size={13} />
+            </button>
+            {request.price != null && (remaining > 0 ? (
+              <button onClick={onPay} className="flex items-center gap-1 rounded-xl bg-emerald-500 px-3 py-1.5 text-[12px] font-semibold text-white">
+                Payer <ChevronRight size={13} />
+              </button>
+            ) : (
+              <span className="flex items-center gap-1 rounded-xl bg-emerald-500/10 px-3 py-1.5 text-[12px] font-semibold text-emerald-600">
+                <CheckCircle size={13} /> Payé
+              </span>
+            ))}
+          </div>
         </div>
       )}
 
@@ -141,8 +159,11 @@ function RequestCard({ request, onViewTracking, onViewInvoice, onComplete }: {
   )
 }
 
-export default function RdvScreen({ onNavigate, onViewTracking, onViewInvoice, onOpenChat }: RdvScreenProps) {
+export default function RdvScreen({ onNavigate, onViewTracking, onViewInvoice, onOpenChat, onPay }: RdvScreenProps) {
   const requests = useRequestsStore(state => state.requests)
+  const isAuthenticated = useAuthStore(state => state.isAuthenticated)
+  // Actualise à l'ouverture (nouvelles réponses, date et prix fixés par l'agent)
+  useEffect(() => { if (isAuthenticated) useRequestsStore.getState().loadRequests() }, [isAuthenticated])
   const [tab, setTab] = useState<Tab>('ongoing')
   const ongoing = requests.filter(r => r.status === 'awaiting_call' || r.status === 'scheduled')
   const past = requests.filter(r => r.status === 'completed' || r.status === 'cancelled')
@@ -180,9 +201,12 @@ export default function RdvScreen({ onNavigate, onViewTracking, onViewInvoice, o
               {tab === 'ongoing' && (
                 <button onClick={() => onNavigate('home')} className="text-[13px] font-semibold text-[#2d7ff9]">Faire une demande</button>
               )}
+              {!isAuthenticated && (
+                <button onClick={() => onNavigate('login')} className="text-[13px] font-semibold text-[#2d7ff9]">Se connecter</button>
+              )}
             </div>
           ) : displayed.map(request => (
-            <RequestCard key={request.id} request={request} onViewTracking={onViewTracking} onViewInvoice={onViewInvoice} onComplete={() => onOpenChat(request.id)} />
+            <RequestCard key={request.id} request={request} onViewTracking={onViewTracking} onViewInvoice={onViewInvoice} onComplete={() => onOpenChat(request.id)} onPay={() => onPay(request.id)} />
           ))}
         </div>
       </div>

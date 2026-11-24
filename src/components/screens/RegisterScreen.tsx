@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { ChevronLeft, Eye, EyeOff, Lock, User } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import PhoneInput from '@/components/ui/PhoneInput'
+import { errorMessage } from '@/lib/api-client'
 
 interface RegisterScreenProps {
   onBack: () => void
@@ -17,7 +18,7 @@ export default function RegisterScreen({ onBack, onSuccess }: RegisterScreenProp
   const [showPwd, setShowPwd] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const login = useAuthStore(s => s.login)
+  const signUp = useAuthStore(s => s.signUp)
 
   const set = (key: keyof typeof form) => (v: string) => setForm(f => ({ ...f, [key]: v }))
 
@@ -35,15 +36,19 @@ export default function RegisterScreen({ onBack, onSuccess }: RegisterScreenProp
       setError('Le mot de passe doit faire au moins 6 caractères.'); return
     }
     setLoading(true); setError('')
-    await new Promise(r => setTimeout(r, 800))
-    login({
-      id: 'u' + Date.now(),
-      firstName: form.firstName,
-      lastName: form.lastName,
-      phone: '01' + form.phoneRaw,
-    }, 'mock-token')
-    setLoading(false)
-    onSuccess()
+    try {
+      await signUp({
+        firstName: form.firstName.trim(),
+        lastName: form.lastName.trim(),
+        phone: '01' + form.phoneRaw,
+        password: form.password,
+      })
+      onSuccess()
+    } catch (err) {
+      setError(errorMessage(err))
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (

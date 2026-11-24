@@ -4,6 +4,8 @@ import { ArrowRight, MessageSquare, Mic } from 'lucide-react'
 import { RequestStatus, Screen, ServiceRequest } from '@/types'
 import { selectUnreadTotal, useRequestsStore, WEKAN_AGENT } from '@/store/requestsStore'
 import { formatDuration } from '@/components/ui/VoiceNote'
+import { useEffect } from 'react'
+import { useAuthStore } from '@/store/authStore'
 import TabBar from '@/components/ui/TabBar'
 import AppHeader from '@/components/ui/AppHeader'
 
@@ -13,7 +15,7 @@ interface ConversationsScreenProps {
 }
 
 const STATUS: Record<RequestStatus, { label: string; className: string }> = {
-  awaiting_call: { label: 'En attente', className: 'bg-amber-500/10 text-amber-600' },
+  awaiting_call: { label: 'En attente d’un appel', className: 'bg-amber-500/10 text-amber-600' },
   scheduled:     { label: 'Planifiée',  className: 'bg-[#2d7ff9]/10 text-[#2d7ff9]' },
   completed:     { label: 'Terminée',   className: 'bg-emerald-500/10 text-emerald-600' },
   cancelled:     { label: 'Annulée',    className: 'bg-red-500/10 text-red-500' },
@@ -33,11 +35,7 @@ function PromoBanner({ onTap }: { onTap: () => void }) {
       <div className="absolute -right-6 -top-10 h-20 w-28 rounded-full bg-white/50" />
 
       <div className="relative flex h-full flex-col justify-center px-4">
-        <p className="flex items-center gap-1.5 text-[13px] font-extrabold tracking-[-0.01em] text-[#2d7ff9]">
-          <span className="flex h-5 w-5 items-center justify-center rounded-md bg-[#2d7ff9] text-[11px] text-white">W</span>
-          Wekan
-        </p>
-        <p className="mt-1.5 max-w-[190px] text-[13px] font-bold leading-snug text-[#12326a]">
+        <p className="max-w-[190px] text-[13px] font-bold leading-snug text-[#12326a]">
           Une panne, une fuite, un coup de peinture ?
         </p>
         <p className="text-[17px] font-extrabold leading-tight text-[#2d7ff9]">Un artisan dès demain !</p>
@@ -97,6 +95,9 @@ function ConversationRow({ request, onTap }: { request: ServiceRequest; onTap: (
 
 export default function ConversationsScreen({ onNavigate, onOpenChat }: ConversationsScreenProps) {
   const requests = useRequestsStore(state => state.requests)
+  const isAuthenticated = useAuthStore(state => state.isAuthenticated)
+  // Actualise à l'ouverture (nouvelles réponses, date et prix fixés par l'agent)
+  useEffect(() => { if (isAuthenticated) useRequestsStore.getState().loadRequests() }, [isAuthenticated])
   const totalUnread = useRequestsStore(selectUnreadTotal)
 
   return (
@@ -116,6 +117,9 @@ export default function ConversationsScreen({ onNavigate, onOpenChat }: Conversa
               <MessageSquare size={40} className="text-[var(--text-muted)]" />
               <p className="text-[14px] text-[var(--text-muted)]">Aucune conversation</p>
               <p className="text-[12px] text-[var(--text-muted)]">Chaque demande que vous faites ouvre une conversation. Elle apparaîtra ici.</p>
+              {!isAuthenticated && (
+                <button onClick={() => onNavigate('login')} className="text-[13px] font-semibold text-[#2d7ff9]">Se connecter</button>
+              )}
             </div>
           ) : (
             requests.map(request => <ConversationRow key={request.id} request={request} onTap={() => onOpenChat(request.id)} />)

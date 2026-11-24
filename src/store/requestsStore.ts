@@ -1,17 +1,20 @@
-// ─── Demandes, conversations & lieux enregistrés (mode démo, en mémoire) ─────
-// Une demande = une conversation : le vocal et le texte saisis à la création
+// ─── Demandes, conversations & lieux enregistrés (branchés sur /api) ─────────
+// Une demande = une conversation : les vocaux et messages saisis à la création
 // deviennent les premiers messages, et le client complète ensuite dans le chat.
 
 import { create } from 'zustand'
-import { RequestLocation, RequestMessage, SavedPlace, ServiceRequest } from '@/types'
+import { PaymentOperator, RequestLocation, RequestMessage, RequestPayment, SavedPlace, ServiceRequest } from '@/types'
+import { api } from '@/lib/api-client'
+import type { VoiceNoteData } from '@/components/ui/VoiceNote'
 
-/** Vocal ou texte envoyé par le client à l'étape 2 (devient un message de la conversation). */
-export type DraftMessage = Pick<RequestMessage, 'text' | 'voiceNote'>
+/** Vocal ou texte envoyé par le client (étape 2 ou conversation). */
+export interface DraftMessage {
+  text?: string
+  voiceNote?: VoiceNoteData
+}
 
 interface NewRequest {
   serviceId: string
-  serviceName: string
-  serviceImage: string
   location: RequestLocation | null
   messages: DraftMessage[]
 }
@@ -19,104 +22,116 @@ interface NewRequest {
 interface RequestsStore {
   requests: ServiceRequest[]
   savedPlaces: SavedPlace[]
-  createRequest: (input: NewRequest) => ServiceRequest
-  sendMessage: (requestId: string, message: Pick<RequestMessage, 'text' | 'voiceNote'>) => void
-  markRead: (requestId: string) => void
-  savePlace: (place: RequestLocation) => SavedPlace
-  removePlace: (id: string) => void
+  loaded: boolean
+  loadRequests: () => Promise<void>
+  loadRequest: (id: string) => Promise<void>
+  loadPlaces: () => Promise<void>
+  createRequest: (input: NewRequest) => Promise<ServiceRequest>
+  sendMessage: (requestId: string, message: DraftMessage) => Promise<void>
+  markRead: (requestId: string) => Promise<void>
+  savePlace: (place: RequestLocation) => Promise<SavedPlace>
+  removePlace: (id: string) => Promise<void>
+  startPayment: (requestId: string, input: { amount: number; operator: PaymentOperator; msisdn: string }) => Promise<RequestPayment>
+  getPayment: (paymentId: string) => Promise<RequestPayment>
+  reset: () => void
 }
 
 export const WEKAN_AGENT = { name: 'Service client Wekan', avatar: '/favicon.png' }
 
-const SEED_REQUESTS: ServiceRequest[] = [
-  {
-    id: 'req-1037', ref: 'DEM-1037', serviceId: 'plomberie', serviceName: 'Plombier', serviceImage: '/plomberie.jpeg',
-    createdAt: 'Hier, 18:20', location: { label: 'Domicile', lat: 6.3654, lng: 2.4183 },
-    description: 'Fuite sous l’évier de la cuisine, l’eau coule en continu.',
-    status: 'scheduled', date: 'Demain', time: '10:00', price: 15000,
-    providerName: 'Alex Migan', providerAvatar: '/plom1.jpeg',
-    unread: 2,
-    messages: [
-      { id: 'm1', sender: 'user', time: 'Hier', text: 'Fuite sous l’évier de la cuisine, l’eau coule en continu.' },
-      { id: 'm2', sender: 'agent', time: 'Hier', text: 'Bonjour ! Votre demande a bien été reçue. Un agent va vous appeler dans un instant.' },
-      { id: 'm3', sender: 'agent', time: 'Hier', text: 'Suite à notre appel : intervention prévue demain à 10:00 avec Alex Migan, pour 15 000 FCFA.' },
-      { id: 'm4', sender: 'agent', time: '09:30', text: 'Alex sera chez vous à l’heure. Pensez à couper l’arrivée d’eau en attendant.' },
-    ],
-  },
-  {
-    id: 'req-1019', ref: 'DEM-1019', serviceId: 'nettoyage', serviceName: 'Nettoyage', serviceImage: '/nettoyage.jpeg',
-    createdAt: '18 Mar', location: { label: 'Bureau', lat: 6.37, lng: 2.422 },
-    description: 'Nettoyage complet de l’appartement avant emménagement.',
-    status: 'completed', date: '18 Mar 2025', time: '09:00', price: 25000,
-    providerName: 'Sophie Adjovi', providerAvatar: '/nettoy1.jpeg',
-    unread: 0,
-    messages: [
-      { id: 'm1', sender: 'user', time: '17 Mar', text: 'Nettoyage complet de l’appartement avant emménagement.' },
-      { id: 'm2', sender: 'agent', time: '17 Mar', text: 'Bonjour ! Votre demande a bien été reçue. Un agent va vous appeler dans un instant.' },
-      { id: 'm3', sender: 'agent', time: '18 Mar', text: 'Intervention terminée. Merci pour votre confiance !' },
-    ],
-  },
-]
-
-const SEED_PLACES: SavedPlace[] = [
-  { id: 'place-home', label: 'Domicile', lat: 6.3654, lng: 2.4183 },
-]
-
-function clock() {
-  const d = new Date()
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+/** Envoie le fichier audio d'un vocal et renvoie son identifiant serveur. */
+async function uploadVoice(note: VoiceNoteData) {
+  if (!note.blob) throw new Error('Vocal introuvable, réenregistrez-le.')
+  const form = new FormData()
+  form.append('audio', note.blob, 'vocal')
+  form.append('durationSec', String(note.durationSec))
+  form.append('waveform', JSON.stringify(note.waveform ?? []))
+  const { voice } = await api<{ voice: { id: string } }>('/voices', { method: 'POST', body: form })
+  return voice.id
 }
 
-let messageSeq = 0
-const newId = () => `msg-${Date.now()}-${messageSeq++}`
+async function toPayload(message: DraftMessage) {
+  return message.voiceNote ? { voiceId: await uploadVoice(message.voiceNote) } : { text: message.text }
+}
+
+const upsert = (list: ServiceRequest[], request: ServiceRequest) =>
+  list.some(r => r.id === request.id) ? list.map(r => (r.id === request.id ? request : r)) : [request, ...list]
 
 export const useRequestsStore = create<RequestsStore>((set, get) => ({
-  requests: SEED_REQUESTS,
-  savedPlaces: SEED_PLACES,
+  requests: [],
+  savedPlaces: [],
+  loaded: false,
 
-  createRequest: ({ messages: drafts, ...input }) => {
-    const number = 1043 + get().requests.filter(r => r.status === 'awaiting_call').length
-    const time = clock()
-    // Tous les vocaux et messages de l'étape 2, dans l'ordre, puis l'accusé de réception
-    const messages: RequestMessage[] = drafts.map(d => ({ id: newId(), sender: 'user', time, ...d }))
-    const texts = drafts.map(d => d.text).filter(Boolean)
-    messages.push({
-      id: newId(), sender: 'agent', time,
-      text: 'Bonjour ! Votre demande a bien été reçue. Un agent va vous appeler dans un instant. Vous pouvez compléter les informations ici.',
-    })
-
-    const request: ServiceRequest = {
-      ...input,
-      voiceNote: drafts.find(d => d.voiceNote)?.voiceNote,
-      description: texts.length ? texts.join('\n') : undefined,
-      id: `req-${Date.now()}`,
-      ref: `DEM-${number}`,
-      createdAt: `Aujourd'hui, ${time}`,
-      status: 'awaiting_call',
-      messages,
-      unread: 1,
+  loadRequests: async () => {
+    try {
+      const { requests } = await api<{ requests: ServiceRequest[] }>('/requests')
+      set({ requests, loaded: true })
+    } catch {
+      set({ requests: [], loaded: true }) // non connecté
     }
-    set(state => ({ requests: [request, ...state.requests] }))
+  },
+
+  loadRequest: async id => {
+    const { request } = await api<{ request: ServiceRequest }>(`/requests/${id}`)
+    set(state => ({ requests: upsert(state.requests, request) }))
+  },
+
+  loadPlaces: async () => {
+    try {
+      const { places } = await api<{ places: SavedPlace[] }>('/places')
+      set({ savedPlaces: places })
+    } catch {
+      set({ savedPlaces: [] })
+    }
+  },
+
+  createRequest: async ({ serviceId, location, messages }) => {
+    // Les vocaux sont envoyés d'abord, dans l'ordre, puis la demande
+    const payload = []
+    for (const message of messages) payload.push(await toPayload(message))
+    const { request } = await api<{ request: ServiceRequest }>('/requests', {
+      method: 'POST',
+      json: { serviceId, location, messages: payload },
+    })
+    set(state => ({ requests: upsert(state.requests, request) }))
     return request
   },
 
-  sendMessage: (requestId, message) =>
+  sendMessage: async (requestId, message) => {
+    const body = await toPayload(message)
+    const { message: saved } = await api<{ message: RequestMessage }>(`/requests/${requestId}/messages`, { method: 'POST', json: body })
     set(state => ({
-      requests: state.requests.map(r =>
-        r.id === requestId ? { ...r, messages: [...r.messages, { id: newId(), sender: 'user', time: clock(), ...message }] } : r,
-      ),
-    })),
+      requests: state.requests.map(r => (r.id === requestId ? { ...r, messages: [...r.messages, saved] } : r)),
+    }))
+  },
 
-  markRead: requestId =>
-    set(state => ({ requests: state.requests.map(r => (r.id === requestId && r.unread ? { ...r, unread: 0 } : r)) })),
+  markRead: async requestId => {
+    if (!get().requests.find(r => r.id === requestId)?.unread) return
+    set(state => ({ requests: state.requests.map(r => (r.id === requestId ? { ...r, unread: 0 } : r)) }))
+    await api(`/requests/${requestId}/read`, { method: 'POST' }).catch(() => {})
+  },
 
-  savePlace: place => {
-    const saved: SavedPlace = { ...place, id: `place-${Date.now()}` }
+  savePlace: async place => {
+    const { place: saved } = await api<{ place: SavedPlace }>('/places', { method: 'POST', json: place })
     set(state => ({ savedPlaces: [...state.savedPlaces, saved] }))
     return saved
   },
 
-  removePlace: id => set(state => ({ savedPlaces: state.savedPlaces.filter(p => p.id !== id) })),
+  removePlace: async id => {
+    await api(`/places/${id}`, { method: 'DELETE' })
+    set(state => ({ savedPlaces: state.savedPlaces.filter(p => p.id !== id) }))
+  },
+
+  startPayment: async (requestId, input) => {
+    const { payment } = await api<{ payment: RequestPayment }>(`/requests/${requestId}/payments`, { method: 'POST', json: input })
+    return payment
+  },
+
+  getPayment: async paymentId => {
+    const { payment } = await api<{ payment: RequestPayment }>(`/payments/${paymentId}`)
+    return payment
+  },
+
+  reset: () => set({ requests: [], savedPlaces: [], loaded: false }),
 }))
 
 /** Nombre total de messages non lus (badge du menu). */

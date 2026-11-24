@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Screen } from '@/types'
 import MobileWrapper from '@/components/layout/MobileWrapper'
 import SplashScreen from '@/components/screens/SplashScreen'
@@ -9,9 +9,8 @@ import RegisterScreen from '@/components/screens/RegisterScreen'
 import HomeScreen from '@/components/screens/HomeScreen'
 import AllServicesScreen from '@/components/screens/AllServicesScreen'
 import RequestFlowScreen from '@/components/screens/RequestFlowScreen'
-import type { BookingDetails } from '@/components/screens/ServiceScreen'
 import ServicePage from '@/components/screens/ServicePage'
-import PaymentScreen from '@/components/screens/PaymentScreen'
+import RequestPaymentScreen from '@/components/screens/RequestPaymentScreen'
 import ProviderTrackingScreen from '@/components/screens/ProviderTrackingScreen'
 import ConversationsScreen from '@/components/screens/ConversationsScreen'
 import ChatScreen from '@/components/screens/ChatScreen'
@@ -21,8 +20,6 @@ import ProfilScreen from '@/components/screens/ProfilScreen'
 import NotificationsScreen from '@/components/screens/NotificationsScreen'
 import AddressesScreen from '@/components/screens/AddressesScreen'
 import { AideScreen, ConfidentialiteScreen, ParametresNotifScreen, PhoneScreen, CGUScreen } from '@/components/screens/SubPages'
-import { appointmentsApi } from '@/services/api'
-import { getServiceConfig } from '@/data/services-config'
 import { useAuthStore } from '@/store/authStore'
 import { useRequestsStore } from '@/store/requestsStore'
 
@@ -33,7 +30,14 @@ export default function Page() {
   const [selectedService, setSelectedService] = useState('nettoyage')
   const [servicePageId, setServicePageId]     = useState('plomberie')
   const [rdvTracking, setRdvTracking] = useState<{ requestId?: string; date: string; time: string } | null>(null)
-  const [booking, setBooking] = useState<BookingDetails | null>(null)
+
+  // Session : vérifiée auprès du serveur au démarrage, puis chargement des demandes
+  const isAuthenticated = useAuthStore(state => state.isAuthenticated)
+  useEffect(() => { useAuthStore.getState().hydrate() }, [])
+  useEffect(() => {
+    if (isAuthenticated) useRequestsStore.getState().loadRequests()
+    else useRequestsStore.getState().reset()
+  }, [isAuthenticated])
 
   // Écran à ouvrir une fois connecté (l'inscription n'est demandée qu'au moment d'agir)
   const [afterAuth, setAfterAuth] = useState<AnyScreen>('home')
@@ -43,6 +47,11 @@ export default function Page() {
 
   const navigate = (target: AnyScreen, serviceId?: string) => {
     if (serviceId) setSelectedService(serviceId)
+    if (target === 'login' && screen !== 'register') {
+      // « Se connecter » : revenir ensuite sur l'écran courant
+      setAfterAuth(screen)
+      setAuthReturn(screen)
+    }
     if (PROTECTED.includes(target) && !useAuthStore.getState().isAuthenticated) {
       setAfterAuth(target)
       setAuthReturn(screen === 'login' || screen === 'register' ? authReturn : screen)
@@ -61,36 +70,19 @@ export default function Page() {
     setScreen('chat')
   }
 
+  // Paiement (avance) d'une demande
+  const [paymentRequestId, setPaymentRequestId] = useState<string | null>(null)
+  const openPayment = (requestId: string) => {
+    setPaymentRequestId(requestId)
+    setScreen('payment')
+  }
+
   const finishAuth = () => setScreen(afterAuth)
   const cancelAuth = () => setScreen(authReturn)
 
   const openServicePage = (id: string) => {
     setServicePageId(id)
     setScreen('service-page')
-  }
-
-  const confirmBooking = async () => {
-    if (booking) {
-      const service = getServiceConfig(booking.serviceId)
-      const selectedOptions = service?.options
-        .filter(option => booking.optionIds.includes(option.id))
-        .map(option => option.title) ?? []
-
-      await appointmentsApi.create({
-        service: `${service?.name ?? 'Service'}${selectedOptions.length ? ` – ${selectedOptions.join(', ')}` : ''}`,
-        serviceId: booking.serviceId,
-        providerName: 'Marc Ahossi',
-        providerRole: 'Prestataire certifié',
-        providerAvatar: '/elec1.jpeg',
-        date: booking.date,
-        time: booking.time,
-        status: 'confirmed',
-        price: `${booking.totalPrice.toLocaleString('fr-FR')} FCFA`,
-        address: booking.address,
-      })
-      setRdvTracking({ date: booking.date, time: booking.time })
-    }
-    navigate('provider-tracking')
   }
 
   return (
@@ -111,10 +103,10 @@ export default function Page() {
         />
       )}
       {screen === 'payment'           && (
-        <PaymentScreen
-          booking={booking}
-          onBack={() => navigate('service-detail')}
-          onConfirm={confirmBooking}
+        <RequestPaymentScreen
+          key={paymentRequestId ?? ''}
+          requestId={paymentRequestId}
+          onClose={() => navigate('rdv')}
         />
       )}
       {screen === 'provider-tracking' && (
@@ -140,10 +132,11 @@ export default function Page() {
           onViewTracking={appt => { setRdvTracking(appt); navigate('provider-tracking') }}
           onViewInvoice={() => navigate('invoice')}
           onOpenChat={openChat}
+          onPay={openPayment}
         />
       )}
       {screen === 'notifications'     && <NotificationsScreen onNavigate={s => navigate(s as AnyScreen)} onViewServicePage={openServicePage} />}
-      {screen === 'profil'            && <ProfilScreen onNavigate={s => navigate(s as AnyScreen)} onLogout={() => { useAuthStore.getState().logout(); navigate('home') }} />}
+      {screen === 'profil'            && <ProfilScreen onNavigate={s => navigate(s as AnyScreen)} onLogout={async () => { await useAuthStore.getState().signOut(); navigate('home') }} />}
       {screen === 'adresses'          && <AddressesScreen onBack={() => navigate('profil')} />}
       {screen === 'aide'              && <AideScreen onBack={() => navigate('profil')} />}
       {screen === 'confidentialite'   && <ConfidentialiteScreen onBack={() => navigate('profil')} />}
